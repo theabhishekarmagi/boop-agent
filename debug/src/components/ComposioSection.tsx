@@ -28,6 +28,8 @@ interface Toolkit {
 interface ToolkitsResponse {
   enabled: boolean;
   toolkits: Toolkit[];
+  nextCursor?: string | null;
+  totalItems?: number;
 }
 
 interface ToolSummary {
@@ -207,6 +209,12 @@ function IntroCard({ isDark, onDismiss }: { isDark: boolean; onDismiss: () => vo
 export function ComposioSection({ isDark }: { isDark: boolean }) {
   const [data, setData] = useState<ToolkitsResponse | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [search, setSearch] = useState("");
+  const query = search.trim();
+  const [catalog, setCatalog] = useState<(ToolkitsResponse & { query: string }) | null>(null);
+  const [catalogCursor, setCatalogCursor] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [needsAuthConfig, setNeedsAuthConfig] = useState<NeedsAuthConfigInfo | null>(null);
   const [showIntro, setShowIntro] = useState(() => {
@@ -273,6 +281,42 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
   useEffect(() => {
     fetchToolkits();
   }, [fetchToolkits]);
+
+  useEffect(() => {
+    if (!query || !data?.enabled) {
+      setSearching(false);
+      setSearchError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setSearching(true);
+    setSearchError(null);
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ search: query });
+        if (catalogCursor) params.set("cursor", catalogCursor);
+        const response = await fetch(`/api/composio/toolkits?${params}`, { signal: controller.signal });
+        if (!response.ok) throw new Error("Couldn't search Composio. Try again.");
+        const page = await response.json() as ToolkitsResponse;
+        if (controller.signal.aborted) return;
+        setCatalog((previous) => ({
+          ...page,
+          query,
+          toolkits: catalogCursor && previous?.query === query
+            ? [...new Map([...previous.toolkits, ...page.toolkits].map((t) => [t.slug, t])).values()]
+            : page.toolkits,
+        }));
+      } catch (error) {
+        if (!controller.signal.aborted) setSearchError(String((error as Error).message));
+      } finally {
+        if (!controller.signal.aborted) setSearching(false);
+      }
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, catalogCursor, data]);
 
   const connect = useCallback(
     async (slug: string) => {
@@ -476,13 +520,66 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
         </div>
       ) : (
         (() => {
-          const toolkits = data?.toolkits ?? [];
+          const result = catalog?.query === query ? catalog : null;
+          const toolkits = query ? result?.toolkits ?? [] : data?.toolkits ?? [];
+          const pending = Boolean(query) && (searching || (!result && !searchError));
           const needsSetup = toolkits.filter(
             (t) => !hasActive(t) && t.authMode === "byo" && !t.hasAuthConfig,
           );
           const ready = toolkits.filter((t) => !needsSetup.includes(t));
           return (
             <div className="space-y-6">
+              <div>
+                <label htmlFor="connection-app-search" className={`block text-sm mb-2 ${muted}`}>
+                  Search apps
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="connection-app-search"
+                    type="search"
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setCatalogCursor(null);
+                      setCatalog(null);
+                      setSearchError(null);
+                    }}
+                    placeholder="Search by app name, e.g. Gmail or Slack"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 ${cardBg} ${isDark ? "text-slate-100 placeholder:text-slate-500" : "text-slate-900 placeholder:text-slate-400"}`}
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch("");
+                        setCatalogCursor(null);
+                      }}
+                      className="text-sm text-sky-500 hover:underline shrink-0"
+                    >
+                      Clear search
+                    </button>
+                  )}
+                </div>
+                <p role="status" className={`text-xs mt-2 ${muted}`}>
+                  {pending ? "Searching Composio’s full app catalog…" : query
+                    ? `${result?.totalItems ?? 0} apps found · ${toolkits.length} shown`
+                    : `${toolkits.length} suggested and connected apps · Search to find more in Composio’s full catalog`}
+                </p>
+              </div>
+              {searchError && (
+                <div role="alert" className="text-sm text-rose-500">
+                  {searchError}{" "}
+                  <button type="button" className="underline" onClick={() => {
+                    setCatalogCursor(null);
+                    void fetchToolkits();
+                  }}>Retry</button>
+                </div>
+              )}
+              {!pending && !searchError && toolkits.length === 0 && (
+                <div className={`rounded-xl border px-4 py-6 text-sm ${cardBg} ${muted}`}>
+                  {query ? "No apps match your search. Try another app name." : "No apps available."}
+                </div>
+              )}
               {ready.length > 0 && (
                 <SubsectionGrid
                   label="Ready to connect"
@@ -510,7 +607,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
               {needsSetup.length > 0 && (
                 <SubsectionGrid
                   label="Needs one-time auth config"
-                  hint="Toolkit doesn't allow a shared OAuth app — bring your own"
+                  hint="Requires your own credentials or authentication setup"
                   isDark={isDark}
                 >
                   {needsSetup.map((t) => (
@@ -530,6 +627,16 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
                     />
                   ))}
                 </SubsectionGrid>
+              )}
+              {query && result?.nextCursor && !searchError && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setCatalogCursor(result.nextCursor ?? null)}
+                  className="text-sm text-sky-500 hover:underline disabled:opacity-50"
+                >
+                  {pending ? "Loading…" : "Load more apps"}
+                </button>
               )}
             </div>
           );
@@ -862,7 +969,7 @@ function ByoSetupSteps({
                 {portal.note && <span className={`block text-[11px] mt-0.5 ${muted}`}>{portal.note}</span>}
               </>
             ) : (
-              <>Register an OAuth app on this toolkit's developer portal — copy the Client ID + Secret.</>
+              <>Open this app in Composio and follow its authentication instructions. It may require an API key, bot token, or OAuth credentials.</>
             )}
           </span>
         </li>
@@ -886,7 +993,7 @@ function ByoSetupSteps({
             >
               click Connect
             </button>{" "}
-            to run OAuth.
+            to finish connecting.
           </span>
         </li>
       </ol>

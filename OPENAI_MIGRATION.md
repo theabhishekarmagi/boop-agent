@@ -43,17 +43,17 @@ Check `npm run models` and choose available slugs if either default is unavailab
 
 The current local installation uses `gpt-5.6-sol` for main agents and `gpt-5.6-luna` for background work because those models are available to the connected account. `balanced` and `fast` follow these configured models.
 
-### Local database and dashboard
+### Database and dashboard
 
-A local Convex deployment is configured in ignored `.env.local`, with both `CONVEX_URL` and `VITE_CONVEX_URL` pointing to `http://127.0.0.1:3210`. The normal Convex CLI generated types and deployed the existing tables and indexes. No Convex cloud account is required for this development setup.
+The active installation uses the Convex cloud development deployment `dazzling-cow-103`. Both `CONVEX_URL` and `VITE_CONVEX_URL` in ignored `.env.local` point to `https://dazzling-cow-103.convex.cloud`; `VITE_CONVEX_SITE_URL` points to `https://dazzling-cow-103.convex.site`. The original anonymous local deployment remains separate; its records are not copied automatically.
 
 Restart the local services together, without requiring a public webhook tunnel:
 
 ```sh
-CONVEX_AGENT_MODE=anonymous npm run dev:parallel
+npm run dev:parallel
 ```
 
-Open the [Boop dashboard](http://localhost:5173/). The server runs at `http://localhost:3456`, and the [local Convex dashboard](http://127.0.0.1:6790/?d=anonymous-agent) shows database records. Stop any already-running service instances before restarting them.
+Open the [Boop dashboard](http://localhost:5173/). The server runs at `http://localhost:3456`, and your Convex project dashboard shows cloud database records. Stop any already-running service instances before restarting them.
 
 The existing debug dashboard monitors agents, memory, events, automations, connections, and settings. To test a local conversation directly:
 

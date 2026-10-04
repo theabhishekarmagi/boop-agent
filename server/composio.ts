@@ -17,8 +17,7 @@ export interface CuratedToolkit {
 }
 
 // Hand-picked toolkits surfaced in the debug UI. Composio exposes 1000+ total,
-// but rendering them all is noisy; users can still connect anything outside
-// this list by editing this array.
+// but rendering them all is noisy. The UI searches the full catalog on demand.
 export const CURATED_TOOLKITS: CuratedToolkit[] = [
   { slug: "gmail", displayName: "Gmail", authMode: "managed" },
   { slug: "googlecalendar", displayName: "Google Calendar", authMode: "managed" },
@@ -100,6 +99,46 @@ export interface ToolSummary {
   slug: string;
   name: string;
   description?: string;
+}
+
+// The installed SDK's list method strips both search and pagination metadata.
+// Use the current catalog API for on-demand discovery, keeping the key server-side.
+export async function searchToolkitCatalog(search: string, cursor?: string) {
+  const params = new URLSearchParams({ search, limit: "20", sort_by: "alphabetically" });
+  if (cursor) params.set("cursor", cursor);
+  const response = await fetch(`https://backend.composio.dev/api/v3.1/toolkits?${params}`, {
+    headers: { "x-api-key": process.env.COMPOSIO_API_KEY ?? "" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Composio catalog search failed (HTTP ${response.status}).`);
+  const page = await response.json() as {
+    items: Array<{
+      slug: string;
+      name: string;
+      composio_managed_auth_schemes?: string[];
+      meta?: { logo?: string; description?: string; tools_count?: number };
+    }>;
+    next_cursor?: string | null;
+    total_items?: number;
+  };
+  // Put name matches before matches found only in an app's description.
+  const query = search.toLowerCase();
+  page.items.sort((a, b) =>
+    Number(b.name.toLowerCase().includes(query) || b.slug.includes(query)) -
+    Number(a.name.toLowerCase().includes(query) || a.slug.includes(query)),
+  );
+  return {
+    items: page.items.map((t) => ({
+      slug: t.slug,
+      displayName: t.name,
+      authMode: (t.composio_managed_auth_schemes?.length ? "managed" : "byo") as ToolkitAuthMode,
+      logoUrl: t.meta?.logo ?? null,
+      description: t.meta?.description ?? null,
+      toolCount: t.meta?.tools_count ?? null,
+    })),
+    nextCursor: page.next_cursor ?? null,
+    totalItems: page.total_items ?? page.items.length,
+  };
 }
 
 // Composio's toolkit catalog rarely changes; cache the full list for the life of the process.
@@ -504,7 +543,9 @@ export async function authorizeToolkit(
   const existing = (await listConnectedToolkits()).filter(
     (c) => c.slug === slug && c.status === "ACTIVE",
   );
-  const conn = await composio.connectedAccounts.initiate(boopUserId(), authConfigId, {
+  // Managed OAuth now requires a Connect Link; initiate() is rejected by
+  // Composio. link() preserves aliases, callbacks, and multiple accounts.
+  const conn = await composio.connectedAccounts.link(boopUserId(), authConfigId, {
     ...(existing.length > 0 ? { allowMultiple: true } : {}),
     ...(opts?.callbackUrl ? { callbackUrl: opts.callbackUrl } : {}),
     ...(opts?.alias ? { alias: opts.alias } : {}),

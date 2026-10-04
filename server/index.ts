@@ -16,9 +16,11 @@ import { createComposioRouter } from "./composio-routes.js";
 import { ensureProactiveWatcher } from "./proactive-email.js";
 import { preloadLocalModel } from "./embeddings.js";
 import { createMemoryRouter } from "./memory-routes.js";
+import { startTelegramLoop } from "./telegram.js";
 
 async function main() {
   await loadIntegrations();
+  startTelegramLoop();
   startCleanupLoop();
   startAutomationLoop();
   startHeartbeatLoop();

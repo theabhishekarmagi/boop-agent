@@ -11,6 +11,7 @@ import {
   listToolkitSlugsWithAuthConfig,
   listToolsForToolkit,
   renameConnection,
+  searchToolkitCatalog,
 } from "./composio.js";
 import { refreshIntegrations } from "./integrations/registry.js";
 import { getStoredWebhookSecret } from "./composio-webhook.js";
@@ -23,12 +24,19 @@ export function createComposioRouter(): express.Router {
     res.json({ enabled: Boolean(getComposio()) });
   });
 
-  router.get("/toolkits", async (_req, res) => {
+  router.get("/toolkits", async (req, res) => {
     try {
-      const [connected, configured, meta] = await Promise.all([
+      const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+      const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+      if (search.length > 200 || (cursor?.length ?? 0) > 2000) {
+        res.status(400).json({ error: "Search or cursor is too long." });
+        return;
+      }
+      const [connected, configured, meta, catalog] = await Promise.all([
         listConnectedToolkits(),
         listToolkitSlugsWithAuthConfig(),
-        listToolkitMeta(),
+        search ? Promise.resolve(new Map()) : listToolkitMeta(),
+        search && getComposio() ? searchToolkitCatalog(search, cursor) : Promise.resolve(null),
       ]);
 
       const connectionsBySlug = new Map<string, typeof connected>();
@@ -52,6 +60,20 @@ export function createComposioRouter(): express.Router {
         accountAvatarUrl: c.accountAvatarUrl ?? null,
         createdAt: c.createdAt ?? null,
       });
+
+      if (catalog) {
+        res.json({
+          enabled: true,
+          toolkits: catalog.items.map((t) => ({
+            ...t,
+            hasAuthConfig: configured.has(t.slug),
+            connections: (connectionsBySlug.get(t.slug) ?? []).map(toConnectionView),
+          })),
+          nextCursor: catalog.nextCursor,
+          totalItems: catalog.totalItems,
+        });
+        return;
+      }
 
       const curated = CURATED_TOOLKITS.map((t) => {
         const m = meta.get(t.slug);
@@ -92,7 +114,7 @@ export function createComposioRouter(): express.Router {
       res.json({ enabled: Boolean(getComposio()), toolkits: [...curated, ...extras] });
     } catch (err) {
       console.error("[composio-routes] list failed", err);
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: "Unable to load apps from Composio. Please try again." });
     }
   });
 
