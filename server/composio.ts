@@ -1,6 +1,6 @@
 import { Composio } from "@composio/core";
-import { ClaudeAgentSDKProvider } from "@composio/claude-agent-sdk";
-import { createSdkMcpServer, type McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
+import { OpenAIAgentsProvider } from "@composio/openai-agents";
+import { createToolGroup, type ToolGroup } from "./openai-runtime.js";
 import type { IntegrationModule } from "./integrations/registry.js";
 
 export type ToolkitAuthMode = "managed" | "byo";
@@ -47,15 +47,15 @@ export const CURATED_TOOLKITS: CuratedToolkit[] = [
 
 const DISPLAY_NAME_BY_SLUG = new Map(CURATED_TOOLKITS.map((t) => [t.slug, t.displayName]));
 
-let singleton: Composio<ClaudeAgentSDKProvider> | null = null;
+let singleton: Composio<OpenAIAgentsProvider> | null = null;
 
-export function getComposio(): Composio<ClaudeAgentSDKProvider> | null {
+export function getComposio(): Composio<OpenAIAgentsProvider> | null {
   if (singleton) return singleton;
   const apiKey = process.env.COMPOSIO_API_KEY;
   if (!apiKey) return null;
-  singleton = new Composio<ClaudeAgentSDKProvider>({
+  singleton = new Composio<OpenAIAgentsProvider>({
     apiKey,
-    provider: new ClaudeAgentSDKProvider(),
+    provider: new OpenAIAgentsProvider(),
   });
   return singleton;
 }
@@ -442,7 +442,12 @@ function extractAccountIdentity(state: unknown, data: unknown): AccountIdentity 
 export async function renameConnection(connectionId: string, alias: string): Promise<void> {
   const composio = getComposio();
   if (!composio) throw new Error("COMPOSIO_API_KEY not set");
-  await composio.connectedAccounts.update(connectionId, { alias });
+  // Core's update() toggles enabled status; alias updates use the account API.
+  const response = await fetch(`https://backend.composio.dev/api/v3.1/connected_accounts/${encodeURIComponent(connectionId)}`, {
+    method: "PATCH", headers: { "x-api-key": process.env.COMPOSIO_API_KEY!, "Content-Type": "application/json" },
+    body: JSON.stringify({ alias }), signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`Account rename failed (HTTP ${response.status}).`);
 }
 
 export class ComposioNeedsAuthConfigError extends Error {
@@ -518,7 +523,7 @@ export function buildComposioIntegrationModule(slug: string): IntegrationModule 
     name: slug,
     description: `${displayNameFor(slug)} (via Composio)`,
     requiredEnv: ["COMPOSIO_API_KEY"],
-    createServer: async (): Promise<McpSdkServerConfigWithInstance> => {
+    createServer: async (): Promise<ToolGroup> => {
       const composio = getComposio();
       if (!composio) {
         throw new Error(`[composio] cannot build ${slug} — COMPOSIO_API_KEY not set`);
@@ -543,7 +548,7 @@ export function buildComposioIntegrationModule(slug: string): IntegrationModule 
           : {}),
       });
       const tools = await session.tools();
-      return createSdkMcpServer({
+      return createToolGroup({
         name: slug,
         version: "0.1.0",
         tools,

@@ -1,4 +1,4 @@
-import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
+import { tool, createToolGroup } from "../openai-runtime.js";
 import { z } from "zod";
 import { api } from "../../convex/_generated/api.js";
 import { convex } from "../convex-client.js";
@@ -16,7 +16,7 @@ const segmentEnum = z.enum([
 ]);
 
 export function createMemoryMcp(conversationId: string) {
-  return createSdkMcpServer({
+  return createToolGroup({
     name: "boop-memory",
     version: "0.1.0",
     tools: [

@@ -1,4 +1,5 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { mainModel, smallModel, resolveModelInput } from "./model-config.js";
+import { runAgentQuery } from "./openai-runtime.js";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 import { broadcast } from "./broadcast.js";
@@ -97,8 +98,8 @@ interface Challenge {
   severity: "low" | "medium" | "high";
 }
 
-const ADVERSARY_MODEL = process.env.BOOP_ADVERSARY_MODEL ?? "claude-haiku-4-5";
-const DEFAULT_MODEL = process.env.BOOP_MODEL ?? "claude-sonnet-4-6";
+const ADVERSARY_MODEL = resolveModelInput(process.env.BOOP_ADVERSARY_MODEL ?? "") ?? smallModel();
+const DEFAULT_MODEL = mainModel();
 
 interface Decision {
   proposalIndex: number;
@@ -120,12 +121,11 @@ async function runLlm(
   const started = Date.now();
   let buffer = "";
   let usage: UsageTotals = { ...EMPTY_USAGE };
-  for await (const msg of query({
+  for await (const msg of runAgentQuery({
     prompt: userPrompt,
     options: {
       systemPrompt,
       model,
-      permissionMode: "bypassPermissions",
     },
   })) {
     if (msg.type === "assistant") {

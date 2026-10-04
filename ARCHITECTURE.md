@@ -1,3 +1,5 @@
+> Runtime update: model inference now uses the OpenAI Agents SDK through `server/openai-runtime.ts`; Claude query/MCP examples below describe the original implementation. Local tool namespaces replace SDK MCP servers. ChatGPT sign-in and explicit API-key mode are documented in [OPENAI_MIGRATION.md](./OPENAI_MIGRATION.md). Convex schemas, HTTP routes, scheduling, messaging, and integration workflows remain in place.
+
 # Architecture
 
 boop-agent is a small distributed system disguised as a single-server app. Four moving parts, each doing one job.

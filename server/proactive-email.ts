@@ -1,10 +1,11 @@
+import { mainModel, smallModel, resolveModelInput } from "./model-config.js";
 // Webhook-driven Gmail watcher. Runs after Composio fires
 // `composio.trigger.message` for a `GMAIL_NEW_GMAIL_MESSAGE` trigger.
 // Pipeline: ignore non-Gmail → warmup-skip the first event per connection
 // → recall user preferences → cheap Haiku classifier → on important, route
 // the summary into the interaction agent as a synthetic system message so it
 // gets the same tone/spawn pipeline as a real user turn.
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { runAgentQuery } from "./openai-runtime.js";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage.js";
@@ -15,7 +16,7 @@ import { ensureWebhookSubscription } from "./composio-webhook.js";
 import { describeUserNow } from "./timezone-config.js";
 
 const TRIGGER_SLUG = "GMAIL_NEW_GMAIL_MESSAGE";
-const CLASSIFIER_MODEL = "claude-haiku-4-5-20251001";
+const CLASSIFIER_MODEL = smallModel();
 
 // First event per connection since process boot is treated as warmup —
 // classification is skipped to avoid noise from any backfill behavior on
@@ -212,12 +213,11 @@ export async function classifyEmailImportance(
 
   let buffer = "";
   let usage: UsageTotals = { ...EMPTY_USAGE };
-  for await (const msg of query({
+  for await (const msg of runAgentQuery({
     prompt: userPrompt,
     options: {
       systemPrompt: `${RUBRIC_PROMPT}\n\n${prefBlock}\n\n${idBlock}\n\n${timeBlock}`,
       model,
-      permissionMode: "bypassPermissions",
     },
   })) {
     if (msg.type === "assistant") {

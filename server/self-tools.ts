@@ -1,4 +1,6 @@
-import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
+import { mainModel } from "./model-config.js";
+import { authMode, listOpenAIModels } from "./openai-auth.js";
+import { tool, createToolGroup } from "./openai-runtime.js";
 import { z } from "zod";
 import {
   CURATED_TOOLKITS,
@@ -23,21 +25,22 @@ import {
 } from "./timezone-config.js";
 
 export function createSelfMcp() {
-  return createSdkMcpServer({
+  return createToolGroup({
     name: "boop-self",
     version: "0.1.0",
     tools: [
       tool(
         "get_config",
-        "Return Boop's runtime configuration: which Claude model it's using, the user's timezone, the current local time, which integrations are loaded, and basic env info. Use when the user asks 'what model are you?', 'what time is it?', 'what timezone am I in?', or anything about the agent itself.",
+        "Return Boop's runtime configuration: which OpenAI model it's using, the user's timezone, the current local time, which integrations are loaded, and basic env info. Use when the user asks 'what model are you?', 'what time is it?', 'what timezone am I in?', or anything about the agent itself.",
         {},
         async () => {
           const integrations = availableIntegrations();
           const tzInfo = await describeUserNow();
           const config = {
             model: await getRuntimeModel(),
-            envDefault: process.env.BOOP_MODEL ?? "claude-sonnet-4-6",
-            availableModels: [...KNOWN_MODELS],
+            envDefault: mainModel(),
+            availableModels: (await listOpenAIModels()).map((m) => m.id),
+            authMode: authMode(),
             userTimezone: tzInfo.isExplicit ? tzInfo.timezone : null,
             timezoneFallback: tzInfo.isExplicit ? null : tzInfo.timezone,
             currentLocalTime: tzInfo.now,
@@ -94,18 +97,16 @@ Use when the user tells you their timezone or location ("I'm in Dallas", "use ce
       ),
       tool(
         "set_model",
-        `Switch the Claude model used for both this dispatcher and any sub-agents. The change applies to the *next* turn (this turn finishes on the current model). Accepts either a canonical ID or a friendly alias.
+        `Switch the OpenAI model used for both this dispatcher and any sub-agents. The change applies to the *next* turn (this turn finishes on the current model). Accepts either a canonical ID or a friendly alias.
 
 Aliases: ${Object.keys(MODEL_ALIASES).map((k) => `"${k}"`).join(", ")}
 Canonical: ${[...KNOWN_MODELS].map((k) => `"${k}"`).join(", ")}
 
-Use when the user says "use opus", "switch to sonnet", "make it faster (haiku)", etc.
-
-Cost note (approximate, per 1M output tokens): Opus 4.7 ≈ $75, Sonnet 4.6 ≈ $15, Haiku 4.5 ≈ $4. Mention briefly when switching to Opus.`,
+Use when the user asks to switch models or make it faster. Model availability depends on the signed-in account. ChatGPT mode uses the plan allowance; API mode is billed separately.`,
         {
           model: z
             .string()
-            .describe('Model to use. Canonical ID like "claude-opus-4-7" or alias like "opus".'),
+            .describe('Model to use. Canonical ID like "gpt-6-astra" or alias like "powerful".'),
         },
         async ({ model }) => {
           const resolved = resolveModelInput(model);
@@ -119,6 +120,10 @@ Cost note (approximate, per 1M output tokens): Opus 4.7 ≈ $75, Sonnet 4.6 ≈ 
               ],
             };
           }
+          const available = await listOpenAIModels();
+          if (!available.some((m) => m.id === resolved)) return {
+            content: [{ type: "text" as const, text: `Model ${resolved} is unavailable for this account. Available: ${available.map((m) => m.id).join(", ")}` }],
+          };
           await setRuntimeModel(resolved);
           return {
             content: [

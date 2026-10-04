@@ -1,4 +1,4 @@
-import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
+import { tool, createToolGroup } from "./openai-runtime.js";
 import { z } from "zod";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
@@ -13,7 +13,7 @@ function randomId(prefix: string): string {
 export function createAutomationMcp(conversationId: string) {
   const integrationHint = availableIntegrations().join(", ") || "(none configured)";
 
-  return createSdkMcpServer({
+  return createToolGroup({
     name: "boop-automations",
     version: "0.1.0",
     tools: [

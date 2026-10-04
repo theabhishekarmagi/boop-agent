@@ -1,4 +1,4 @@
-import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
+import { tool, createToolGroup } from "./openai-runtime.js";
 import { z } from "zod";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
@@ -13,7 +13,7 @@ function randomId(prefix: string): string {
  * performing it directly.
  */
 export function createDraftStagingMcp(conversationId: string) {
-  return createSdkMcpServer({
+  return createToolGroup({
     name: "boop-drafts",
     version: "0.1.0",
     tools: [
@@ -57,7 +57,7 @@ ALWAYS call this instead of sending or creating something directly. The user wil
  * Drafts MCP for the INTERACTION agent. Lets it review and approve drafts the user confirmed.
  */
 export function createDraftDecisionMcp(conversationId: string) {
-  return createSdkMcpServer({
+  return createToolGroup({
     name: "boop-draft-decisions",
     version: "0.1.0",
     tools: [

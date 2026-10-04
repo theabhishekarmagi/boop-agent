@@ -1,4 +1,4 @@
-import { query, tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
+import { runAgentQuery, tool, createToolGroup } from "./openai-runtime.js";
 import { z } from "zod";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
@@ -200,7 +200,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
   const draftDecisionServer = createDraftDecisionMcp(opts.conversationId);
   const selfServer = createSelfMcp();
 
-  const ackServer = createSdkMcpServer({
+  const ackServer = createToolGroup({
     name: "boop-ack",
     version: "0.1.0",
     tools: [
@@ -245,7 +245,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     ],
   });
 
-  const spawnServer = createSdkMcpServer({
+  const spawnServer = createToolGroup({
     name: "boop-spawn",
     version: "0.1.0",
     tools: [
@@ -307,12 +307,12 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
   let reply = "";
   let usage: UsageTotals = { ...EMPTY_USAGE };
   try {
-    for await (const msg of query({
+    for await (const msg of runAgentQuery({
       prompt,
       options: {
         systemPrompt,
         model: requestedModel,
-        mcpServers: {
+        toolGroups: {
           "boop-memory": memoryServer,
           "boop-spawn": spawnServer,
           "boop-automations": automationServer,
@@ -339,22 +339,6 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           "mcp__boop-self__search_composio_catalog",
           "mcp__boop-self__inspect_toolkit",
         ],
-        // Belt-and-suspenders: even with bypassPermissions the SDK can leak
-        // its built-ins if we only whitelist. Explicitly block them on the
-        // dispatcher so it MUST spawn a sub-agent for external work.
-        disallowedTools: [
-          "WebSearch",
-          "WebFetch",
-          "Bash",
-          "Read",
-          "Write",
-          "Edit",
-          "Glob",
-          "Grep",
-          "Agent",
-          "Skill",
-        ],
-        permissionMode: "bypassPermissions",
       },
     })) {
       if (msg.type === "assistant") {

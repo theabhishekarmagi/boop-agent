@@ -1,4 +1,5 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { mainModel, smallModel, resolveModelInput } from "../model-config.js";
+import { runAgentQuery } from "../openai-runtime.js";
 import { api } from "../../convex/_generated/api.js";
 import { convex } from "../convex-client.js";
 import { embed } from "../embeddings.js";
@@ -44,17 +45,16 @@ export async function extractAndStore(opts: {
   turnId: string;
 }): Promise<void> {
   const started = Date.now();
-  const requestedModel = process.env.BOOP_MODEL ?? "claude-sonnet-4-6";
+  const requestedModel = mainModel();
   try {
     const payload = `USER: ${opts.userMessage}\n\nASSISTANT: ${opts.assistantReply}`;
     let buffer = "";
     let usage: UsageTotals = { ...EMPTY_USAGE };
-    for await (const msg of query({
+    for await (const msg of runAgentQuery({
       prompt: payload,
       options: {
         systemPrompt: EXTRACTION_PROMPT,
         model: requestedModel,
-        permissionMode: "bypassPermissions",
       },
     })) {
       if (msg.type === "assistant") {

@@ -323,12 +323,12 @@ async function main() {
   console.log(`
 What this does:
   1. Pulls your Sendblue keys (via their CLI, or you paste them)
-  2. Asks about your Claude model preference
+  2. Asks about your OpenAI model preference
   3. Runs \`npx convex dev\` to create a Convex project
   4. Writes .env.local
 
 Before you start:
-  • A Claude Code subscription:    https://claude.com/code
+  • Your ChatGPT account:           https://chatgpt.com
   • Convex account (free tier):    https://convex.dev
   • Sendblue (free on agent plan): https://sendblue.com
 `);
@@ -375,11 +375,11 @@ Before you start:
       {
         type: "select",
         name: "BOOP_MODEL",
-        message: "Which Claude model should the agent use?",
+        message: "Which OpenAI model should the agent use?",
         choices: [
-          { title: "claude-sonnet-4-6 (recommended)", value: "claude-sonnet-4-6" },
-          { title: "claude-opus-4-6 (slowest, most capable)", value: "claude-opus-4-6" },
-          { title: "claude-haiku-4-5 (fastest, cheapest)", value: "claude-haiku-4-5" },
+          { title: "gpt-6.1-sol (recommended)", value: "gpt-6.1-sol" },
+          { title: "gpt-6-astra (slowest, most capable)", value: "gpt-6-astra" },
+          { title: "gpt-6-luna (fastest, cheapest)", value: "gpt-6-luna" },
         ],
         initial: 0,
       },
@@ -626,16 +626,15 @@ re-pasting into Sendblue every time. For a stable URL, pick one of:
   if (env.VITE_CONVEX_URL?.includes("example.convex.cloud")) delete env.VITE_CONVEX_URL;
   writeEnv(ENV_PATH, env);
 
-  banner("Claude authentication");
-  console.log(`This project uses your Claude Code subscription — no Anthropic API key needed.
+  banner("OpenAI authentication");
+  console.log(`Sign in locally with your ChatGPT account:
 
-If you haven't already:
-  • Install Claude Code:  npm install -g @anthropic-ai/claude-code
-  • Run once:              claude
-  • Sign in when prompted
+  npm run login:chatgpt
+  npm run models
 
-The Claude Agent SDK reads the credentials Claude Code saves on disk.
-You can override with ANTHROPIC_API_KEY in .env.local if you'd rather use an API key.
+Boop defaults to ChatGPT plan usage, sharing your subscription limits.
+Alternatively, set BOOP_OPENAI_AUTH=api and OPENAI_API_KEY in .env.local
+for separately billed API usage. Never paste credentials into chat.
 `);
 
   if (answers.runConvex) {

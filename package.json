@@ -2,7 +2,7 @@
   "name": "boop-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Text-an-agent starter: iMessage your Claude agent, it runs sub-agents, remembers you, and grows with integrations you add.",
+  "description": "Text-an-agent starter: iMessage your OpenAI agent, it runs sub-agents, remembers you, and grows with integrations you add.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -18,24 +18,31 @@
     "build:debug": "vite build --config debug/vite.config.ts",
     "start": "npm run preflight && tsx server/index.ts",
     "deploy:convex": "convex deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "login:chatgpt": "tsx scripts/chatgpt-login.ts",
+    "models": "tsx scripts/chatgpt-login.ts --models",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "smoke:openai": "tsx scripts/smoke-openai.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
-    "@composio/claude-agent-sdk": "^0.6.10",
-    "@composio/core": "^0.6.10",
+    "@composio/core": "^0.22.0",
+    "@composio/openai-agents": "^0.11.1",
     "@hugeicons/core-free-icons": "^1.0.0",
     "@hugeicons/react": "^1.0.0",
     "@huggingface/transformers": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@openai/agents": "^0.18.0",
+    "cheerio": "^1.2.0",
     "convex": "^1.36.1",
     "cors": "^2.8.5",
     "croner": "^9.0.0",
     "dotenv": "^16.4.0",
     "express": "^5.0.0",
+    "jose": "^6.2.12",
+    "openai": "^7.27.0",
     "react-force-graph-2d": "^1.27.0",
     "ws": "^8.18.0",
-    "zod": "^3.23.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

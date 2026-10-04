@@ -166,19 +166,17 @@ export function DashboardPanel({ isDark }: { isDark: boolean }) {
           c={c}
           isDark={isDark}
           info={{
-            title: "API-equivalent cost",
+            title: "OpenAI usage cost",
             body: (
               <>
                 <p className="mb-1.5">
-                  This number is what your token usage <em>would</em> cost at Anthropic API rates.
+                  In API mode this is an estimate at standard OpenAI token rates. Long-context premiums and hosted tool fees may be extra.
                 </p>
                 <p className="mb-1.5">
-                  If you're using your <strong>Claude Code subscription</strong> (the default), you're
-                  paying a flat monthly rate — not these dollar amounts.
+                  With <strong>ChatGPT sign-in</strong> (the default), new runs show $0 because they use your plan allowance.
                 </p>
                 <p>
-                  Watch this as a usage-burn proxy (against subscription rate limits) or as a
-                  forecast for what API auth would cost.
+                  Use token totals to monitor activity. API billing and ChatGPT usage settings remain authoritative; older records retain their original costs.
                 </p>
               </>
             ),
