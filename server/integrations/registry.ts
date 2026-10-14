@@ -1,3 +1,4 @@
+import { tenantKey } from "../tenant-context.js";
 import type { ToolGroup } from "../openai-runtime.js";
 
 export interface IntegrationModule {
@@ -11,31 +12,37 @@ export interface IntegrationContext {
   conversationId?: string;
 }
 
-const registry = new Map<string, IntegrationModule>();
+const registries = new Map<string, Map<string, IntegrationModule>>();
+function registryForTenant() {
+  const key = tenantKey();
+  let map = registries.get(key);
+  if (!map) { map = new Map(); registries.set(key, map); }
+  return map;
+}
 
 export function registerIntegration(mod: IntegrationModule): void {
-  registry.set(mod.name, mod);
+  registryForTenant().set(mod.name, mod);
 }
 
 export function listIntegrations(): IntegrationModule[] {
-  return [...registry.values()];
+  return [...registryForTenant().values()];
 }
 
 export function getIntegration(name: string): IntegrationModule | undefined {
-  return registry.get(name);
+  return registryForTenant().get(name);
 }
 
 export async function loadIntegrations(): Promise<void> {
   const { registerComposioToolkits } = await import("./composio-loader.js");
   await registerComposioToolkits();
-  const loaded = [...registry.keys()];
+  const loaded = [...registryForTenant().keys()];
   console.log(
     `[integrations] loaded: ${loaded.join(", ") || "(none — connect a toolkit from the Debug UI's Connections tab)"}`,
   );
 }
 
 export async function refreshIntegrations(): Promise<void> {
-  registry.clear();
+  registryForTenant().clear();
   await loadIntegrations();
 }
 
@@ -50,7 +57,7 @@ export async function buildMcpServersForIntegrations(
   const ctx = makeContext(conversationId);
   const out: Record<string, ToolGroup> = {};
   for (const name of names) {
-    const mod = registry.get(name);
+    const mod = registryForTenant().get(name);
     if (!mod) {
       console.warn(`[integrations] unknown integration: ${name}`);
       continue;

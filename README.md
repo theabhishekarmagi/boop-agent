@@ -37,6 +37,7 @@ Built on:
 
 - **iMessage in / iMessage out** via Sendblue (with typing indicators and webhook dedup).
 - **WhatsApp text chat** via Baileys: QR pairing, saved sessions, approved senders, reconnects, and replies through the same agent. See [WhatsApp setup](WHATSAPP.md). This is an unofficial linked-device integration for a personal instance.
+- **Public WhatsApp onboarding**: Clerk phone/SMS signup, a temporary chat-opening QR, verified-number linking, and separate user memory, agent activity, and integrations. Enable public mode only with the authenticated worker and deployment configuration described in [WhatsApp setup](WHATSAPP.md).
 - **Sendblue CLI integration** — `npm run dev` auto-registers the inbound webhook for you every restart (no re-pasting into the dashboard when free ngrok rotates your URL).
 - **Dispatcher + workers** pattern: a lean interaction agent decides what to do, spawns focused sub-agents that actually do the work.
 - **Pure dispatcher** — the interaction agent has only memory + spawn + automation + draft tools. Web access, files, and integrations are explicitly denied to it; sub-agents get `WebSearch` / `WebFetch` / the integrations.

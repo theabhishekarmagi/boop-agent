@@ -2,19 +2,24 @@ import { resolve, join } from "node:path";
 import makeWASocket, { DisconnectReason, jidNormalizedUser, makeCacheableSignalKeyStore, type WASocket, type WAMessage, type proto } from "@whiskeysockets/baileys";
 import pino from "pino";
 import qrcode from "qrcode-terminal";
+import QRCode from "qrcode";
+import { writeFile } from "node:fs/promises";
 import { lockWhatsAppDirectory, loadWhatsAppAuth, readJson, writeJson } from "./whatsapp-state.js";
 import { approvedWhatsAppPhone, incomingWhatsAppText, phoneJid, processWhatsAppJob, splitWhatsAppText, type WhatsAppCheckpoint, type WhatsAppJob } from "./whatsapp-messages.js";
 import { handleUserMessage } from "./interaction-agent.js";
 import { convex } from "./convex-client.js";
 import { api } from "../convex/_generated/api.js";
 import { broadcast } from "./broadcast.js";
+import { asTenant, publicMode, tenantActor } from "./tenant-context.js";
+import { actorForWhatsApp, connectPublicWhatsApp } from "./public-whatsapp.js";
+import { operatorWelcome } from "./whatsapp-welcome.js";
 
 let socket: WASocket | undefined;
 let account: string | undefined;
 let status = "disabled";
 let started = false;
 let sendText: ((jid: string, text: string) => Promise<void>) | undefined;
-export function whatsAppStatus() { return { status }; }
+export function whatsAppStatus() { return { status, phone: account?.endsWith("@s.whatsapp.net") ? `+${account.split("@")[0]}` : null }; }
 
 export function allowedWhatsAppPhones(): Set<string> {
   return new Set((process.env.BOOP_WHATSAPP_ALLOWED_NUMBERS ?? "").split(",")
@@ -23,7 +28,10 @@ export function allowedWhatsAppPhones(): Set<string> {
 
 export async function sendWhatsAppReply(conversationId: string, text: string): Promise<void> {
   const match = /^whatsapp:([^:]+):([^:]+)$/.exec(conversationId);
-  if (!match || match[1] !== account || !allowedWhatsAppPhones().has(match[2])) {
+  const authorized = match && (publicMode()
+    ? (await actorForWhatsApp(match[2], match[1]))?.ownerId === tenantActor()?.ownerId && !!tenantActor()
+    : allowedWhatsAppPhones().has(match[2]));
+  if (!match || match[1] !== account || !authorized) {
     throw new Error("WhatsApp conversation is not authorized for this account.");
   }
   if (!socket || status !== "connected") throw new Error("WhatsApp is disconnected.");
@@ -65,17 +73,21 @@ export async function startWhatsApp(): Promise<(() => Promise<void>) | undefined
       cacheWrites = cacheWrites.then(() => writeJson(cachePath, snapshot));
       await cacheWrites;
     };
+    const welcomePath = join(directory, "welcomed-accounts.json");
+    const welcome = operatorWelcome(await readJson<string[]>(welcomePath) ?? [], sendText,
+      (accounts) => writeJson(welcomePath, accounts));
     const drain = () => {
       if (draining || stopped || status !== "connected" || retry) return;
       draining = (async () => {
         while (!stopped && status === "connected" && queue.length) {
           const job = queue[0];
-          if (!job.conversationId.startsWith(`whatsapp:${account}:`) || !allowedWhatsAppPhones().has(job.conversationId.split(":")[2])) {
+          const actor = publicMode() ? await actorForWhatsApp(job.conversationId.split(":")[2], account!) : null;
+          if (!job.conversationId.startsWith(`whatsapp:${account}:`) || (publicMode() ? !actor : !allowedWhatsAppPhones().has(job.conversationId.split(":")[2]))) {
             if (checkpoint.pending?.job.id === job.id) { delete checkpoint.pending; await save(checkpoint); }
             queue.shift(); queued.delete(job.id); continue;
           }
           try {
-            await processWhatsAppJob(job, checkpoint, {
+            const process = () => processWhatsAppJob(job, checkpoint, {
               generate: async (conversationId, content) => {
                 broadcast("message_in", { conversationId, content, channel: "whatsapp" });
                 return handleUserMessage({ conversationId, content,
@@ -87,6 +99,7 @@ export async function startWhatsApp(): Promise<(() => Promise<void>) | undefined
                 broadcast("whatsapp_reply", { conversationId });
               }, save,
             });
+            await (actor ? asTenant(actor, process) : process());
             queue.shift(); queued.delete(job.id);
             console.log("[whatsapp] Request processed and reply submitted.");
           } catch {
@@ -121,9 +134,16 @@ export async function startWhatsApp(): Promise<(() => Promise<void>) | undefined
         const text = incomingWhatsAppText(message);
         if (!text || text.length > 16000 || !account) continue;
         const jid = jidNormalizedUser(message.key.remoteJid!);
-        const phone = await approvedWhatsAppPhone(message, allowedWhatsAppPhones(),
+        const phone = await approvedWhatsAppPhone(message, publicMode() ? undefined : allowedWhatsAppPhones(),
           async (lid) => (await current.signalRepository.lidMapping.getPNForLID(lid)) ?? undefined);
         if (!phone) continue;
+        if (publicMode()) {
+          if (text.startsWith("BOOP CONNECT")) {
+            if (await connectPublicWhatsApp(text, phone, account)) await sendText!(jid, "Hi 👋 WhatsApp is connected to your Boop account. How can I help you?");
+            continue;
+          }
+          if (!await actorForWhatsApp(phone, account)) continue;
+        }
         const id = `${jidNormalizedUser(phone)}:${message.key.id}`;
         if (checkpoint.completed.includes(id) || queued.has(id)) continue;
         if (queue.length >= 100) { console.warn("[whatsapp] Queue full; incoming request skipped."); continue; }
@@ -156,11 +176,15 @@ export async function startWhatsApp(): Promise<(() => Promise<void>) | undefined
           status = "awaiting_qr";
           console.log("[whatsapp] Scan with the Boop WhatsApp account: Linked devices → Link a device. Keep this QR private.");
           qrcode.generate(qr, { small: true });
+          void QRCode.toBuffer(qr, { width: 360, margin: 2 }).then((image) =>
+            writeFile(join(directory, "operator-qr.png"), image, { mode: 0o600 }))
+            .catch(() => console.warn("[whatsapp] Could not save the operator QR image; use the terminal QR."));
         }
         if (connection === "open") {
           account = jidNormalizedUser(current.user!.id);
           attempts = 0; status = "connected";
           console.log(`[whatsapp] Connected. ${allowedWhatsAppPhones().size} approved sender(s).`);
+          void welcome(account).catch(() => console.warn("[whatsapp] Welcome greeting failed; it will retry on the next connection."));
           drain();
         }
         if (connection === "close") {
@@ -183,7 +207,7 @@ export async function startWhatsApp(): Promise<(() => Promise<void>) | undefined
         void accept(messages, current).catch(() => console.warn("[whatsapp] Incoming message could not be resolved."));
       });
     };
-    if (!allowedWhatsAppPhones().size) console.log("[whatsapp] Pairing enabled; messages blocked until BOOP_WHATSAPP_ALLOWED_NUMBERS is configured.");
+    if (!publicMode() && !allowedWhatsAppPhones().size) console.log("[whatsapp] Pairing enabled; messages blocked until BOOP_WHATSAPP_ALLOWED_NUMBERS is configured.");
     connect();
     return async () => {
       stopped = true; status = "stopped";

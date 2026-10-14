@@ -1,6 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ClerkProvider, useAuth } from "@clerk/react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { PublicAccount } from "./components/PublicAccount.js";
 import { App } from "./App.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
 import "./styles.css";
@@ -23,12 +26,15 @@ if (!convexUrl) {
     </div>`;
 } else {
   const convex = new ConvexReactClient(convexUrl);
+  const publicMode = import.meta.env.VITE_BOOP_PUBLIC_MODE === "true";
+  const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <ConvexProvider client={convex}>
-          <App />
-        </ConvexProvider>
+        {publicMode ? clerkKey ? <ClerkProvider publishableKey={clerkKey}>
+          <ConvexProviderWithClerk client={convex} useAuth={useAuth}><PublicAccount /></ConvexProviderWithClerk>
+        </ClerkProvider> : <main className="public-account">Account setup is not configured yet.</main> :
+          <ConvexProvider client={convex}><App /></ConvexProvider>}
       </ErrorBoundary>
     </React.StrictMode>,
   );

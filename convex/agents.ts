@@ -1,3 +1,4 @@
+import { tenantContext } from "./tenant";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -10,6 +11,7 @@ const statusV = v.union(
 );
 
 export const create = mutation({
+  returns: v.any(),
   args: {
     agentId: v.string(),
     conversationId: v.optional(v.string()),
@@ -18,6 +20,7 @@ export const create = mutation({
     mcpServers: v.array(v.string()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.insert("executionAgents", {
       ...args,
       status: "spawned",
@@ -30,6 +33,7 @@ export const create = mutation({
 });
 
 export const update = mutation({
+  returns: v.any(),
   args: {
     agentId: v.string(),
     status: v.optional(statusV),
@@ -42,6 +46,7 @@ export const update = mutation({
     costUsd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const { agentId, ...patch } = args;
     const agent = await ctx.db
       .query("executionAgents")
@@ -55,6 +60,7 @@ export const update = mutation({
 });
 
 export const addLog = mutation({
+  returns: v.any(),
   args: {
     agentId: v.string(),
     logType: v.union(
@@ -69,13 +75,16 @@ export const addLog = mutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.insert("agentLogs", { ...args, createdAt: Date.now() });
   },
 });
 
 export const list = query({
+  returns: v.any(),
   args: { status: v.optional(statusV), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const limit = args.limit ?? 50;
     if (args.status) {
       return await ctx.db
@@ -89,8 +98,10 @@ export const list = query({
 });
 
 export const get = query({
+  returns: v.any(),
   args: { agentId: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db
       .query("executionAgents")
       .withIndex("by_agent_id", (q) => q.eq("agentId", args.agentId))
@@ -99,8 +110,10 @@ export const get = query({
 });
 
 export const getLogs = query({
+  returns: v.any(),
   args: { agentId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db
       .query("agentLogs")
       .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))

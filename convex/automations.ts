@@ -1,7 +1,9 @@
+import { tenantContext } from "./tenant";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const create = mutation({
+  returns: v.any(),
   args: {
     automationId: v.string(),
     name: v.string(),
@@ -14,6 +16,7 @@ export const create = mutation({
     nextRunAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const existing = await ctx.db
       .query("automations")
       .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
@@ -28,24 +31,28 @@ export const create = mutation({
 });
 
 export const list = query({
+  returns: v.any(),
   args: { enabledOnly: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     let results;
     if (args.enabledOnly) {
       results = await ctx.db
         .query("automations")
         .withIndex("by_enabled", (q) => q.eq("enabled", true))
-        .collect();
+        .take(5000);
     } else {
-      results = await ctx.db.query("automations").order("desc").collect();
+      results = await ctx.db.query("automations").order("desc").take(5000);
     }
     return results;
   },
 });
 
 export const get = query({
+  returns: v.any(),
   args: { automationId: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db
       .query("automations")
       .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
@@ -54,8 +61,10 @@ export const get = query({
 });
 
 export const setEnabled = mutation({
+  returns: v.any(),
   args: { automationId: v.string(), enabled: v.boolean() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const auto = await ctx.db
       .query("automations")
       .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
@@ -67,8 +76,10 @@ export const setEnabled = mutation({
 });
 
 export const remove = mutation({
+  returns: v.any(),
   args: { automationId: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const auto = await ctx.db
       .query("automations")
       .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
@@ -80,12 +91,14 @@ export const remove = mutation({
 });
 
 export const markRan = mutation({
+  returns: v.any(),
   args: {
     automationId: v.string(),
     lastRunAt: v.number(),
     nextRunAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const auto = await ctx.db
       .query("automations")
       .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
@@ -100,11 +113,13 @@ export const markRan = mutation({
 });
 
 export const createRun = mutation({
+  returns: v.any(),
   args: {
     runId: v.string(),
     automationId: v.string(),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.insert("automationRuns", {
       ...args,
       status: "running",
@@ -114,6 +129,7 @@ export const createRun = mutation({
 });
 
 export const updateRun = mutation({
+  returns: v.any(),
   args: {
     runId: v.string(),
     status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed")),
@@ -122,6 +138,7 @@ export const updateRun = mutation({
     agentId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const run = await ctx.db
       .query("automationRuns")
       .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
@@ -138,8 +155,10 @@ export const updateRun = mutation({
 });
 
 export const recentRuns = query({
+  returns: v.any(),
   args: { automationId: v.optional(v.string()), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const limit = args.limit ?? 50;
     if (args.automationId) {
       return await ctx.db

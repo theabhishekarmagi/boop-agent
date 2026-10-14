@@ -6,8 +6,9 @@ import { buildMcpServersForIntegrations, listIntegrations } from "./integrations
 import { createDraftStagingMcp } from "./draft-tools.js";
 import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage.js";
 import { getRuntimeModel } from "./runtime-config.js";
+import { tenantKey } from "./tenant-context.js";
 
-const running = new Map<string, AbortController>();
+const running = new Map<string, { abort: AbortController; ownerId: string }>();
 
 function randomId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -93,7 +94,7 @@ export async function spawnExecutionAgent(opts: SpawnOptions): Promise<SpawnResu
   const agentId = randomId("agent");
   const name = opts.name ?? (opts.integrations.join("+") || "general");
   const abort = new AbortController();
-  running.set(agentId, abort);
+  running.set(agentId, { abort, ownerId: tenantKey() });
 
   const shortId = agentId.slice(-6);
   const logAgent = (msg: string) => console.log(`[agent ${shortId}] ${msg}`);
@@ -246,14 +247,14 @@ export async function spawnExecutionAgent(opts: SpawnOptions): Promise<SpawnResu
 }
 
 export function cancelAgent(agentId: string): boolean {
-  const abort = running.get(agentId);
-  if (!abort) return false;
-  abort.abort();
+  const entry = running.get(agentId);
+  if (!entry || entry.ownerId !== tenantKey()) return false;
+  entry.abort.abort();
   return true;
 }
 
 export function runningAgentIds(): string[] {
-  return [...running.keys()];
+  return [...running].filter(([, entry]) => entry.ownerId === tenantKey()).map(([id]) => id);
 }
 
 export async function retryAgent(agentId: string): Promise<SpawnResult | null> {

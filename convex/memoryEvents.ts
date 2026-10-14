@@ -1,7 +1,9 @@
+import { tenantContext } from "./tenant";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const emit = mutation({
+  returns: v.any(),
   args: {
     eventType: v.string(),
     conversationId: v.optional(v.string()),
@@ -10,20 +12,25 @@ export const emit = mutation({
     data: v.string(),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.insert("memoryEvents", { ...args, createdAt: Date.now() });
   },
 });
 
 export const recent = query({
+  returns: v.any(),
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.query("memoryEvents").order("desc").take(args.limit ?? 100);
   },
 });
 
 export const byConversation = query({
+  returns: v.any(),
   args: { conversationId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db
       .query("memoryEvents")
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))

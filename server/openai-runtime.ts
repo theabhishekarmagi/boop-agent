@@ -6,6 +6,7 @@ import { authMode, getOpenAICredential } from "./openai-auth.js";
 import { mainModel } from "./model-config.js";
 import { retainStreamedOutput } from "./openai-stream.js";
 import { localTools } from "./local-tools.js";
+import { tenantActor } from "./tenant-context.js";
 import { researchTools } from "./research-tools.js";
 import { costForUsage, type UsageTotals } from "./usage.js";
 
@@ -82,8 +83,9 @@ export async function* runAgentQuery({ prompt, options }: { prompt: string; opti
   signal?.throwIfAborted();
   const { tools, names } = buildTools(options.toolGroups ?? {}, options.allowedTools);
   if (options.research) {
-    const research = await researchTools(signal, options.skills ?? false);
-    if (options.skills) research.push(...localTools(signal));
+    const skills = Boolean(options.skills && !tenantActor());
+    const research = await researchTools(signal, skills);
+    if (skills) research.push(...localTools(signal));
     // WebFetch and Skill also run locally; namespaced tools work with Plus sign-in.
     const functions = research.filter((t): t is FunctionTool => t.type === "function");
     tools.push(...research.filter((t) => t.type !== "function"),

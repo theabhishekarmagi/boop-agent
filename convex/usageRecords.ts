@@ -1,3 +1,4 @@
+import { tenantContext } from "./tenant";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -12,6 +13,7 @@ const sourceV = v.union(
 );
 
 export const record = mutation({
+  returns: v.any(),
   args: {
     source: sourceV,
     conversationId: v.optional(v.string()),
@@ -27,13 +29,16 @@ export const record = mutation({
     durationMs: v.number(),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.insert("usageRecords", { ...args, createdAt: Date.now() });
   },
 });
 
 export const byConversation = query({
+  returns: v.any(),
   args: { conversationId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db
       .query("usageRecords")
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
@@ -43,16 +48,20 @@ export const byConversation = query({
 });
 
 export const recent = query({
+  returns: v.any(),
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.query("usageRecords").order("desc").take(args.limit ?? 100);
   },
 });
 
 export const summary = query({
+  returns: v.any(),
   args: { conversationId: v.optional(v.string()), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    // Cap the scan. Convex's hard .collect() ceiling is 16,384 docs; this
+    ctx = await tenantContext(ctx);
+    // Cap the scan. Convex's hard .take(5000) ceiling is 16,384 docs; this
     // keeps the summary query from silently breaking once the append-only
     // log grows past that. Conversation-scoped queries use the index.
     const limit = args.limit ?? 5000;

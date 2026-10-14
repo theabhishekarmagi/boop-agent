@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { publicToken } from "./publicAuth.js";
 
 export interface SocketEvent {
   event: string;
@@ -21,7 +22,13 @@ export function useSocket(onEvent?: (e: SocketEvent) => void) {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const url = `${proto}//${location.host}/ws`;
       ws = new WebSocket(url);
-      ws.onopen = () => setConnected(true);
+      ws.onopen = async () => {
+        if (import.meta.env.VITE_BOOP_PUBLIC_MODE === "true") {
+          const token = await publicToken();
+          if (!token || cancelled) { ws?.close(); return; }
+          ws?.send(JSON.stringify({ type: "authenticate", token }));
+        } else setConnected(true);
+      };
       ws.onclose = () => {
         setConnected(false);
         reconnectTimer = setTimeout(connect, 1500);
@@ -30,6 +37,7 @@ export function useSocket(onEvent?: (e: SocketEvent) => void) {
       ws.onmessage = (evt) => {
         try {
           const parsed = JSON.parse(evt.data) as SocketEvent;
+          if (parsed.event === "hello") setConnected(true);
           handlerRef.current?.(parsed);
         } catch {
           /* ignore */

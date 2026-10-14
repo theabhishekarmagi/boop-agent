@@ -1,4 +1,5 @@
 import express from "express";
+import { publicMode } from "./tenant-context.js";
 import {
   authorizeToolkit,
   ComposioNeedsAuthConfigError,
@@ -124,7 +125,7 @@ export function createComposioRouter(): express.Router {
       res.json({ tools });
     } catch (err) {
       console.error(`[composio-routes] list tools for ${req.params.slug} failed`, err);
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicMode() ? "Unable to update this integration. Please try again." : String(err) });
     }
   });
 
@@ -146,7 +147,7 @@ export function createComposioRouter(): express.Router {
         return;
       }
       console.error(`[composio-routes] authorize ${slug} failed`, err);
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicMode() ? "Unable to update this integration. Please try again." : String(err) });
     }
   });
 
@@ -163,7 +164,7 @@ export function createComposioRouter(): express.Router {
       res.json({ ok: true });
     } catch (err) {
       console.error(`[composio-routes] disconnect ${slug} failed`, err);
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicMode() ? "Unable to update this integration. Please try again." : String(err) });
     }
   });
 
@@ -179,7 +180,7 @@ export function createComposioRouter(): express.Router {
       res.json({ ok: true });
     } catch (err) {
       console.error(`[composio-routes] rename ${id} failed`, err);
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicMode() ? "Unable to update this integration. Please try again." : String(err) });
     }
   });
 
@@ -189,7 +190,7 @@ export function createComposioRouter(): express.Router {
       res.json({ ok: true });
     } catch (err) {
       console.error("[composio-routes] refresh failed", err);
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicMode() ? "Unable to update this integration. Please try again." : String(err) });
     }
   });
 

@@ -3,10 +3,11 @@ import { convex } from "./convex-client.js";
 import { api } from "../convex/_generated/api.js";
 import { embed, activeProvider } from "./embeddings.js";
 import { broadcast } from "./broadcast.js";
+import { tenantKey } from "./tenant-context.js";
 
 // One in-flight re-embed at a time. Re-embedding twice in parallel just
 // double-bills the embedding API and writes the same rows twice.
-let runningReembed: Promise<{ embedded: number; failed: number }> | null = null;
+const runningReembeds = new Map<string, Promise<{ embedded: number; failed: number }>>();
 
 async function runReembed(): Promise<{ embedded: number; failed: number }> {
   let embedded = 0;
@@ -76,7 +77,7 @@ export function createMemoryRouter(): express.Router {
       const stats = await convex.query(api.memoryRecords.embeddingStats, {});
       res.json({
         provider: activeProvider(),
-        running: Boolean(runningReembed),
+        running: runningReembeds.has(tenantKey()),
         ...stats,
       });
     } catch (err) {
@@ -87,13 +88,15 @@ export function createMemoryRouter(): express.Router {
   });
 
   router.post("/reembed", async (_req, res) => {
-    if (runningReembed) {
+    const owner = tenantKey();
+    if (runningReembeds.has(owner)) {
       res.status(409).json({ error: "re-embed already in progress" });
       return;
     }
-    runningReembed = runReembed().finally(() => {
-      runningReembed = null;
+    const runningReembed = runReembed().finally(() => {
+      runningReembeds.delete(owner);
     });
+    runningReembeds.set(owner, runningReembed);
     // Fire-and-forget: respond immediately and let the WS broadcast carry
     // progress. The HTTP response only confirms the job started.
     runningReembed.catch((err) => console.error("[reembed]", err));

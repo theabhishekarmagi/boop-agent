@@ -1,3 +1,4 @@
+import { tenantContext } from "./tenant";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -8,8 +9,10 @@ const statusV = v.union(
 );
 
 export const createRun = mutation({
+  returns: v.any(),
   args: { runId: v.string(), trigger: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.insert("consolidationRuns", {
       ...args,
       status: "running",
@@ -22,6 +25,7 @@ export const createRun = mutation({
 });
 
 export const updateRun = mutation({
+  returns: v.any(),
   args: {
     runId: v.string(),
     status: v.optional(statusV),
@@ -32,6 +36,7 @@ export const updateRun = mutation({
     details: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const { runId, ...patch } = args;
     const run = await ctx.db
       .query("consolidationRuns")
@@ -45,8 +50,10 @@ export const updateRun = mutation({
 });
 
 export const listRuns = query({
+  returns: v.any(),
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.query("consolidationRuns").order("desc").take(args.limit ?? 25);
   },
 });

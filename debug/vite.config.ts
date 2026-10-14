@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
     root: path.resolve(__dirname),
     envDir: PROJECT_ROOT,
     plugins: [react(), tailwindcss()],
+    define: { "import.meta.env.VITE_BOOP_PUBLIC_MODE": JSON.stringify(env.BOOP_PUBLIC_MODE ?? "false") },
     server: {
       port: 5173,
       proxy: {

@@ -11,6 +11,8 @@ import { createSelfMcp } from "./self-tools.js";
 import { getRuntimeModel } from "./runtime-config.js";
 import { broadcast } from "./broadcast.js";
 import { deliverToConversation } from "./message-delivery.js";
+import { tenantActor } from "./tenant-context.js";
+import { loadIntegrations } from "./integrations/registry.js";
 import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage.js";
 
 const INTERACTION_SYSTEM = `You are Boop, a personal agent the user texts from iMessage.
@@ -180,6 +182,8 @@ function randomId(prefix: string): string {
 }
 
 export async function handleUserMessage(opts: HandleOpts): Promise<string> {
+  if (tenantActor() && !await convex.mutation(api.publicAccounts.claimTurn, {})) return "You've reached your current Boop message limit. Please try again later.";
+  if (tenantActor()) await loadIntegrations();
   const turnId = randomId("turn");
   const integrations = availableIntegrations();
 

@@ -1,9 +1,10 @@
+import { tenantKey } from "./tenant-context.js";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 
 const TZ_KEY = "user_timezone";
 const TZ_TTL_MS = 30 * 1000;
-let cached: { at: number; value: string | null } | null = null;
+const cache = new Map<string, { at: number; value: string | null }>();
 
 // Lazily computed set of valid IANA timezone IDs the runtime knows about.
 // Node 18+ ships Intl.supportedValuesOf("timeZone").
@@ -117,6 +118,7 @@ function envFallback(): string {
 // know "did the user explicitly tell us their timezone?" — e.g. before
 // asking them.
 export async function getStoredUserTimezone(): Promise<string | null> {
+  const cached = cache.get(tenantKey());
   if (cached && Date.now() - cached.at < TZ_TTL_MS) return cached.value;
   let stored: string | null = null;
   try {
@@ -125,7 +127,7 @@ export async function getStoredUserTimezone(): Promise<string | null> {
     console.warn("[timezone-config] settings:get failed", err);
   }
   const final = stored && isValidTimezone(stored) ? stored : null;
-  cached = { at: Date.now(), value: final };
+  cache.set(tenantKey(), { at: Date.now(), value: final });
   return final;
 }
 
@@ -138,12 +140,12 @@ export async function getUserTimezone(): Promise<string> {
 
 export async function setUserTimezone(tz: string): Promise<void> {
   await convex.mutation(api.settings.set, { key: TZ_KEY, value: tz });
-  cached = { at: Date.now(), value: tz };
+  cache.set(tenantKey(), { at: Date.now(), value: tz });
 }
 
 export async function clearUserTimezone(): Promise<void> {
   await convex.mutation(api.settings.clear, { key: TZ_KEY });
-  cached = null;
+  cache.delete(tenantKey());
 }
 
 // Render the current moment in the user's timezone, plus a few useful

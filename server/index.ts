@@ -18,10 +18,20 @@ import { preloadLocalModel } from "./embeddings.js";
 import { createMemoryRouter } from "./memory-routes.js";
 import { startTelegramLoop } from "./telegram.js";
 import { startWhatsApp, whatsAppStatus } from "./whatsapp.js";
+import { publicAuthentication, authenticatePublicToken, allowedOrigins } from "./public-auth.js";
+import { createPublicWhatsAppRouter } from "./public-whatsapp.js";
+import { publicMode, tenantActor } from "./tenant-context.js";
+import { convex } from "./convex-client.js";
+import { api } from "../convex/_generated/api.js";
 
 async function main() {
+  if (publicMode()) {
+    if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_JWT_ISSUER_DOMAIN || !allowedOrigins().length) throw new Error("Configure Clerk and BOOP_ALLOWED_ORIGINS before enabling public mode");
+    const security = await convex.query(api.publicAccounts.securityStatus, {});
+    if (!security.requiresAuth || !security.clerkConfigured) throw new Error("Enable authentication on the Convex deployment before public mode");
+  }
   await loadIntegrations();
-  startTelegramLoop();
+  if (!publicMode()) startTelegramLoop();
   startCleanupLoop();
   startAutomationLoop();
   startHeartbeatLoop();
@@ -36,14 +46,14 @@ async function main() {
   // function once the ngrok URL is known, so we skip when only the local
   // PORT default is available.
   const stableUrl = process.env.PUBLIC_URL;
-  if (stableUrl && !stableUrl.includes("localhost")) {
+  if (!publicMode() && stableUrl && !stableUrl.includes("localhost")) {
     ensureProactiveWatcher(stableUrl).catch((err) =>
       console.error("[proactive] startup failed", err),
     );
   }
 
   const app = express();
-  app.use(cors());
+  app.use(cors(publicMode() ? { origin: allowedOrigins() } : undefined));
   // Composio webhook receiver must read raw bytes for HMAC verification, so
   // its body parser is mounted BEFORE the global express.json. Without this
   // ordering the JSON parser consumes the stream first and the raw buffer
@@ -55,11 +65,15 @@ async function main() {
     res.json({ ok: true, service: "boop-agent", whatsapp: whatsAppStatus() });
   });
 
-  app.use("/sendblue", createSendblueRouter());
+  // Legacy personal channel webhooks are not a public-user identity boundary.
+  if (!publicMode()) app.use("/sendblue", createSendblueRouter());
+  app.use(publicAuthentication);
+  app.use("/whatsapp", createPublicWhatsAppRouter());
   app.use("/composio", createComposioRouter());
   app.use("/memory", createMemoryRouter());
 
-  app.post("/agents/:id/cancel", (req, res) => {
+  app.post("/agents/:id/cancel", async (req, res) => {
+    if (publicMode() && !await convex.query(api.agents.get, { agentId: req.params.id })) { res.status(404).json({ error: "Agent not found" }); return; }
     const ok = cancelAgent(req.params.id);
     res.json({ ok });
   });
@@ -73,11 +87,12 @@ async function main() {
       );
       res.json({ ok: true, triggered: "manual" });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicMode() ? "Unable to process this request. Please try again." : String(err) });
     }
   });
 
   app.post("/agents/:id/retry", async (req, res) => {
+    if (publicMode() && !await convex.query(api.agents.get, { agentId: req.params.id })) { res.status(404).json({ error: "Agent not found" }); return; }
     const result = await retryAgent(req.params.id);
     if (!result) {
       res.status(404).json({ error: "agent not found" });
@@ -98,15 +113,36 @@ async function main() {
       res.json({ reply });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicMode() ? "Unable to process this request. Please try again." : String(err) });
     }
   });
 
+  app.use(((error, _req, res, next) => {
+    if (!publicMode()) { next(error); return; }
+    console.warn("[public-api] Request failed; details kept out of the response.");
+    if (!res.headersSent) res.status(503).json({ error: "This request is temporarily unavailable. Please try again." });
+  }) as express.ErrorRequestHandler);
   const server = createServer(app);
   const wss = new WebSocketServer({ server, path: "/ws" });
   wss.on("connection", (ws) => {
-    addClient(ws);
-    ws.send(JSON.stringify({ event: "hello", data: { ok: true }, at: Date.now() }));
+    const accept = (ownerId?: string) => {
+      addClient(ws, ownerId);
+      ws.send(JSON.stringify({ event: "hello", data: { ok: true }, at: Date.now() }));
+    };
+    if (!publicMode()) { accept(); return; }
+    const timeout = setTimeout(() => ws.close(1008, "Authentication required"), 5000);
+    ws.once("message", async (bytes) => {
+      try {
+        const data = JSON.parse(bytes.toString());
+        if (data.type !== "authenticate" || typeof data.token !== "string") throw new Error("auth");
+        const actor = await authenticatePublicToken(data.token);
+        clearTimeout(timeout); accept(actor.ownerId);
+        // Require fresh authentication periodically; a revoked login must not
+        // retain an indefinitely open dashboard event stream.
+        const expiration = setTimeout(() => ws.close(1008, "Refresh authentication"), 60_000);
+        ws.once("close", () => clearTimeout(expiration));
+      } catch { clearTimeout(timeout); ws.close(1008, "Invalid authentication"); }
+    });
   });
 
   const port = Number(process.env.PORT ?? 3456);

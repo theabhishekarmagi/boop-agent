@@ -1,3 +1,4 @@
+import { tenantContext } from "./tenant";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -9,6 +10,7 @@ const statusV = v.union(
 );
 
 export const create = mutation({
+  returns: v.any(),
   args: {
     draftId: v.string(),
     conversationId: v.string(),
@@ -17,6 +19,7 @@ export const create = mutation({
     payload: v.string(),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.insert("drafts", {
       ...args,
       status: "pending",
@@ -26,8 +29,10 @@ export const create = mutation({
 });
 
 export const get = query({
+  returns: v.any(),
   args: { draftId: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db
       .query("drafts")
       .withIndex("by_draft_id", (q) => q.eq("draftId", args.draftId))
@@ -36,8 +41,10 @@ export const get = query({
 });
 
 export const pendingByConversation = query({
+  returns: v.any(),
   args: { conversationId: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db
       .query("drafts")
       .withIndex("by_conversation_status", (q) =>
@@ -49,15 +56,19 @@ export const pendingByConversation = query({
 });
 
 export const recent = query({
+  returns: v.any(),
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db.query("drafts").order("desc").take(args.limit ?? 50);
   },
 });
 
 export const setStatus = mutation({
+  returns: v.any(),
   args: { draftId: v.string(), status: statusV },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const draft = await ctx.db
       .query("drafts")
       .withIndex("by_draft_id", (q) => q.eq("draftId", args.draftId))

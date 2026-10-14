@@ -18,7 +18,7 @@ export function incomingWhatsAppText(message: WAMessage): string | undefined {
   return text?.trim() || undefined;
 }
 
-export async function approvedWhatsAppPhone(message: WAMessage, allowed: Set<string>, resolveLid: (jid: string) => Promise<string | undefined>): Promise<string | undefined> {
+export async function approvedWhatsAppPhone(message: WAMessage, allowed: Set<string> | undefined, resolveLid: (jid: string) => Promise<string | undefined>): Promise<string | undefined> {
   if (!message.key.remoteJid || !isDirectJid(message.key.remoteJid)) return;
   const jid = jidNormalizedUser(message.key.remoteJid);
   const alternate = message.key.remoteJidAlt ? jidNormalizedUser(message.key.remoteJidAlt) : undefined;
@@ -26,7 +26,7 @@ export async function approvedWhatsAppPhone(message: WAMessage, allowed: Set<str
     : alternate?.endsWith("@s.whatsapp.net") ? alternate : await resolveLid(jid);
   if (!phone) return;
   const normalized = jidNormalizedUser(phone);
-  return allowed.has(normalized) ? normalized : undefined;
+  return !allowed || allowed.has(normalized) ? normalized : undefined;
 }
 
 export function splitWhatsAppText(text: string): string[] {

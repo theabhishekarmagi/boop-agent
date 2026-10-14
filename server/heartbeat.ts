@@ -1,3 +1,4 @@
+import { forEachTenant } from "./tenant-jobs.js";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 import { cancelAgent, runningAgentIds } from "./execution-agent.js";
@@ -28,7 +29,7 @@ export async function sweepStaleAgents(): Promise<void> {
 
 export function startHeartbeatLoop(intervalMs = 60_000): () => void {
   const timer = setInterval(() => {
-    sweepStaleAgents().catch((err) => console.error("[heartbeat] sweep error", err));
+    forEachTenant(() => sweepStaleAgents()).catch((err) => console.error("[heartbeat] sweep error", err));
   }, intervalMs);
   return () => clearInterval(timer);
 }

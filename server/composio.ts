@@ -1,4 +1,6 @@
 import { Composio } from "@composio/core";
+import { createHash } from "node:crypto";
+import { tenantActor } from "./tenant-context.js";
 import { OpenAIAgentsProvider } from "@composio/openai-agents";
 import { createToolGroup, type ToolGroup } from "./openai-runtime.js";
 import type { IntegrationModule } from "./integrations/registry.js";
@@ -60,7 +62,8 @@ export function getComposio(): Composio<OpenAIAgentsProvider> | null {
 }
 
 export function boopUserId(): string {
-  return process.env.COMPOSIO_USER_ID ?? "boop-default";
+  const actor = tenantActor();
+  return actor ? `boop-${createHash("sha256").update(actor.ownerId).digest("hex")}` : process.env.COMPOSIO_USER_ID ?? "boop-default";
 }
 
 export function displayNameFor(slug: string): string {
@@ -481,6 +484,7 @@ function extractAccountIdentity(state: unknown, data: unknown): AccountIdentity 
 export async function renameConnection(connectionId: string, alias: string): Promise<void> {
   const composio = getComposio();
   if (!composio) throw new Error("COMPOSIO_API_KEY not set");
+  if (!(await listConnectedToolkits()).some((c) => c.connectionId === connectionId)) throw new Error("Connection not owned by this account");
   // Core's update() toggles enabled status; alias updates use the account API.
   const response = await fetch(`https://backend.composio.dev/api/v3.1/connected_accounts/${encodeURIComponent(connectionId)}`, {
     method: "PATCH", headers: { "x-api-key": process.env.COMPOSIO_API_KEY!, "Content-Type": "application/json" },
@@ -556,6 +560,7 @@ export async function authorizeToolkit(
 export async function disconnectToolkit(connectionId: string): Promise<void> {
   const composio = getComposio();
   if (!composio) throw new Error("COMPOSIO_API_KEY not set");
+  if (!(await listConnectedToolkits()).some((c) => c.connectionId === connectionId)) throw new Error("Connection not owned by this account");
   await composio.connectedAccounts.delete(connectionId);
 }
 

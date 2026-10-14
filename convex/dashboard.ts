@@ -1,13 +1,17 @@
+import { v } from "convex/values";
+import { tenantContext } from "./tenant";
 import { query } from "./_generated/server";
 
 // Cap per-table scans so a long-lived install doesn't hit Convex's 16,384
-// .collect() ceiling and break the dashboard. Metrics reflect the most
+// .take(5000) ceiling and break the dashboard. Metrics reflect the most
 // recent N rows per table; `truncated` surfaces when we've hit the cap.
 const METRICS_SCAN_LIMIT = 5000;
 
 export const metrics = query({
+  returns: v.any(),
   args: {},
   handler: async (ctx) => {
+    ctx = await tenantContext(ctx);
     const [messages, memories, agents, automationRuns] = await Promise.all([
       ctx.db.query("messages").order("desc").take(METRICS_SCAN_LIMIT),
       ctx.db.query("memoryRecords").order("desc").take(METRICS_SCAN_LIMIT),

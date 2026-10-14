@@ -1,3 +1,5 @@
+import { forEachTenant } from "./tenant-jobs.js";
+import { tenantKey } from "./tenant-context.js";
 import { Cron } from "croner";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
@@ -5,6 +7,7 @@ import { spawnExecutionAgent } from "./execution-agent.js";
 import { deliverToConversation } from "./message-delivery.js";
 import { broadcast } from "./broadcast.js";
 import { getUserTimezone } from "./timezone-config.js";
+const inFlight = new Set<string>();
 
 function randomId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -102,6 +105,9 @@ export async function tickAutomations(): Promise<void> {
   const now = Date.now();
   const due = all.filter((a) => a.nextRunAt !== undefined && a.nextRunAt <= now);
   for (const a of due) {
+    const key = `${tenantKey()}:${a.automationId}`;
+    if (inFlight.has(key)) continue;
+    inFlight.add(key);
     // fire-and-forget so one slow automation doesn't block others
     runAutomation({
       automationId: a.automationId,
@@ -112,13 +118,13 @@ export async function tickAutomations(): Promise<void> {
       timezone: a.timezone,
       conversationId: a.conversationId,
       notifyConversationId: a.notifyConversationId,
-    }).catch((err) => console.error("[automations] run error", err));
+    }).catch((err) => console.error("[automations] run error", err)).finally(() => inFlight.delete(key));
   }
 }
 
 export function startAutomationLoop(intervalMs = 30_000): () => void {
   const timer = setInterval(() => {
-    tickAutomations().catch((err) => console.error("[automations] tick error", err));
+    forEachTenant(() => tickAutomations()).catch((err) => console.error("[automations] tick error", err));
   }, intervalMs);
   return () => clearInterval(timer);
 }

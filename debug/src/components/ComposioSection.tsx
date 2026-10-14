@@ -1,3 +1,4 @@
+import { apiFetch } from "../lib/publicAuth.js";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { IntegrationLogo } from "../lib/branding.js";
 
@@ -268,7 +269,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
 
   const fetchToolkits = useCallback(async () => {
     try {
-      const r = await fetch("/api/composio/toolkits");
+      const r = await apiFetch("/api/composio/toolkits");
       const json = (await r.json()) as ToolkitsResponse;
       setData(json);
     } catch {
@@ -295,7 +296,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
       try {
         const params = new URLSearchParams({ search: query });
         if (catalogCursor) params.set("cursor", catalogCursor);
-        const response = await fetch(`/api/composio/toolkits?${params}`, { signal: controller.signal });
+        const response = await apiFetch(`/api/composio/toolkits?${params}`, { signal: controller.signal });
         if (!response.ok) throw new Error("Couldn't search Composio. Try again.");
         const page = await response.json() as ToolkitsResponse;
         if (controller.signal.aborted) return;
@@ -323,7 +324,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
       setBusy(slug);
       setNeedsAuthConfig(null);
       try {
-        const r = await fetch(`/api/composio/toolkits/${slug}/authorize`, { method: "POST" });
+        const r = await apiFetch(`/api/composio/toolkits/${slug}/authorize`, { method: "POST" });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
           if (err?.needsAuthConfig) {
@@ -363,7 +364,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
               authPollRef.current = null;
             }
             try {
-              await fetch("/api/composio/refresh", { method: "POST" });
+              await apiFetch("/api/composio/refresh", { method: "POST" });
             } catch {
               /* ignore */
             }
@@ -383,7 +384,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
     async (slug: string, connectionId: string) => {
       setBusy(`${slug}:${connectionId}`);
       try {
-        const r = await fetch(`/api/composio/toolkits/${slug}/disconnect`, {
+        const r = await apiFetch(`/api/composio/toolkits/${slug}/disconnect`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ connectionId }),
@@ -406,7 +407,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
   const rename = useCallback(
     async (connectionId: string, alias: string): Promise<boolean> => {
       try {
-        const r = await fetch(`/api/composio/connections/${connectionId}/rename`, {
+        const r = await apiFetch(`/api/composio/connections/${connectionId}/rename`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ alias }),
@@ -434,7 +435,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
       if (toolsBySlug[slug] && toolsBySlug[slug] !== "error") return;
       setToolsBySlug((prev) => ({ ...prev, [slug]: "loading" }));
       try {
-        const r = await fetch(`/api/composio/toolkits/${slug}/tools`);
+        const r = await apiFetch(`/api/composio/toolkits/${slug}/tools`);
         if (!r.ok) throw new Error(r.statusText);
         const json = (await r.json()) as { tools: ToolSummary[] };
         setToolsBySlug((prev) => ({ ...prev, [slug]: json.tools }));

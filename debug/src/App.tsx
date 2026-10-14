@@ -65,7 +65,7 @@ function getStoredTheme(): Theme {
 }
 
 export function App() {
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setView] = useState<View>(import.meta.env.VITE_BOOP_PUBLIC_MODE === "true" ? "connections" : "dashboard");
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
   const { connected } = useSocket();
 
@@ -102,7 +102,7 @@ export function App() {
               isDark ? "text-slate-400" : "text-slate-500"
             }`}
           >
-            Boop Debug
+            {import.meta.env.VITE_BOOP_PUBLIC_MODE === "true" ? "Boop" : "Boop Debug"}
           </h1>
           <div
             className={`flex items-center gap-1.5 text-xs ${

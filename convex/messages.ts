@@ -1,7 +1,9 @@
+import { tenantContext } from "./tenant";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const send = mutation({
+  returns: v.any(),
   args: {
     conversationId: v.string(),
     role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
@@ -10,6 +12,7 @@ export const send = mutation({
     turnId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const now = Date.now();
     const id = await ctx.db.insert("messages", { ...args, createdAt: now });
 
@@ -34,8 +37,10 @@ export const send = mutation({
 });
 
 export const list = query({
+  returns: v.any(),
   args: { conversationId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     return await ctx.db
       .query("messages")
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
@@ -45,8 +50,10 @@ export const list = query({
 });
 
 export const recent = query({
+  returns: v.any(),
   args: { conversationId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const msgs = await ctx.db
       .query("messages")
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))

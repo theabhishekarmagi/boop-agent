@@ -1,3 +1,4 @@
+import { apiFetch } from "../lib/publicAuth.js";
 import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api.js";
@@ -105,7 +106,7 @@ export function ConsolidationPanel({ isDark }: { isDark: boolean }) {
   async function triggerManual() {
     setTriggering(true);
     try {
-      await fetch("/api/consolidate", { method: "POST" });
+      await apiFetch("/api/consolidate", { method: "POST" });
     } finally {
       setTimeout(() => setTriggering(false), 1500);
     }

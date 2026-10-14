@@ -1,3 +1,5 @@
+import { tenantContext, ownerFor, memoryScope, requireWorker } from "./tenant";
+import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { action, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
@@ -16,6 +18,7 @@ const segmentV = v.union(
 const lifecycleV = v.union(v.literal("active"), v.literal("archived"), v.literal("pruned"));
 
 export const upsert = mutation({
+  returns: v.any(),
   args: {
     memoryId: v.string(),
     content: v.string(),
@@ -29,6 +32,7 @@ export const upsert = mutation({
     metadata: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const now = Date.now();
 
     // Archive any memories this one supersedes. Must run on BOTH the insert
@@ -78,8 +82,10 @@ export const upsert = mutation({
 });
 
 export const getByIds = query({
+  returns: v.any(),
   args: { ids: v.array(v.id("memoryRecords")) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const out = [];
     for (const id of args.ids) {
       const r = await ctx.db.get(id);
@@ -90,12 +96,17 @@ export const getByIds = query({
 });
 
 export const vectorSearch = action({
+  returns: v.any(),
   args: { embedding: v.array(v.float64()), limit: v.optional(v.number()) },
   handler: async (ctx, args): Promise<Array<{ _id: Id<"memoryRecords">; score: number; record: any }>> => {
+    ctx = await tenantContext(ctx);
+    const scope = memoryScope(await ownerFor(ctx), "active");
     const results = await ctx.vectorSearch("memoryRecords", "by_embedding", {
       vector: args.embedding,
       limit: args.limit ?? 20,
-      filter: (q) => q.eq("lifecycle", "active"),
+      // Vector filters support equality/OR, not AND. A composite field filters
+      // both owner and lifecycle before the result limit is applied.
+      filter: (q) => q.eq("ownerLifecycle", scope),
     });
     const records = await ctx.runQuery(api.memoryRecords.getByIds, {
       ids: results.map((r) => r._id),
@@ -107,7 +118,25 @@ export const vectorSearch = action({
   },
 });
 
+// One bounded page at a time; the operator uses this when upgrading existing
+// personal records to the composite vector filter. No content changes.
+export const backfillOwnerLifecycle = mutation({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: v.object({ changed: v.number(), isDone: v.boolean(), continueCursor: v.string() }),
+  handler: async (ctx, args) => {
+    await requireWorker(ctx);
+    const page = await ctx.db.query("memoryRecords").withIndex("by_ownerId").paginate(args.paginationOpts);
+    let changed = 0;
+    for (const row of page.page) {
+      const scope = memoryScope(row.ownerId, row.lifecycle);
+      if (row.ownerLifecycle !== scope) { await ctx.db.patch(row._id, { ownerLifecycle: scope }); changed++; }
+    }
+    return { changed, isDone: page.isDone, continueCursor: page.continueCursor };
+  },
+});
+
 export const list = query({
+  returns: v.any(),
   args: {
     tier: v.optional(tierV),
     segment: v.optional(segmentV),
@@ -115,6 +144,7 @@ export const list = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const limit = args.limit ?? 100;
     let results;
     if (args.tier) {
@@ -130,8 +160,10 @@ export const list = query({
 });
 
 export const search = query({
+  returns: v.any(),
   args: { query: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const limit = args.limit ?? 20;
     const q = args.query.toLowerCase();
     // Filter on the index BEFORE the 500 cap — otherwise archived/pruned
@@ -152,8 +184,10 @@ export const search = query({
 });
 
 export const markAccessed = mutation({
+  returns: v.any(),
   args: { memoryId: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const mem = await ctx.db
       .query("memoryRecords")
       .withIndex("by_memory_id", (q) => q.eq("memoryId", args.memoryId))
@@ -168,8 +202,10 @@ export const markAccessed = mutation({
 });
 
 export const setLifecycle = mutation({
+  returns: v.any(),
   args: { memoryId: v.string(), lifecycle: lifecycleV },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const mem = await ctx.db
       .query("memoryRecords")
       .withIndex("by_memory_id", (q) => q.eq("memoryId", args.memoryId))
@@ -183,8 +219,10 @@ export const setLifecycle = mutation({
 const COUNTS_SCAN_LIMIT = 5000;
 
 export const embeddingStats = query({
+  returns: v.any(),
   args: {},
   handler: async (ctx) => {
+    ctx = await tenantContext(ctx);
     const all = await ctx.db
       .query("memoryRecords")
       .withIndex("by_lifecycle", (q) => q.eq("lifecycle", "active"))
@@ -218,11 +256,13 @@ export const embeddingStats = query({
 // unembedded row exactly once) but Convex query cost stays bounded as the
 // memory corpus grows.
 export const listUnembeddedPage = query({
+  returns: v.any(),
   args: {
     cursor: v.optional(v.union(v.string(), v.null())),
     pageSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const result = await ctx.db
       .query("memoryRecords")
       .withIndex("by_lifecycle", (q) => q.eq("lifecycle", "active"))
@@ -245,11 +285,13 @@ export const listUnembeddedPage = query({
 // (which would touch lastAccessedAt + run supersedes processing) just to
 // back-fill a vector.
 export const setEmbedding = mutation({
+  returns: v.any(),
   args: {
     memoryId: v.string(),
     embedding: v.array(v.float64()),
   },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const mem = await ctx.db
       .query("memoryRecords")
       .withIndex("by_memory_id", (q) => q.eq("memoryId", args.memoryId))
@@ -261,8 +303,10 @@ export const setEmbedding = mutation({
 });
 
 export const countsByTier = query({
+  returns: v.any(),
   args: {},
   handler: async (ctx) => {
+    ctx = await tenantContext(ctx);
     const all = await ctx.db.query("memoryRecords").order("desc").take(COUNTS_SCAN_LIMIT);
     const active = all.filter((m) => m.lifecycle === "active");
     return {

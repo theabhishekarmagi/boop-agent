@@ -1,9 +1,12 @@
+import { tenantContext } from "./tenant";
 import { mutation, query } from "./_generated/server.js";
 import { v } from "convex/values";
 
 export const get = query({
+  returns: v.any(),
   args: { key: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const row = await ctx.db
       .query("settings")
       .withIndex("by_key", (q) => q.eq("key", args.key))
@@ -13,8 +16,10 @@ export const get = query({
 });
 
 export const set = mutation({
+  returns: v.any(),
   args: { key: v.string(), value: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const existing = await ctx.db
       .query("settings")
       .withIndex("by_key", (q) => q.eq("key", args.key))
@@ -32,8 +37,10 @@ export const set = mutation({
 });
 
 export const clear = mutation({
+  returns: v.any(),
   args: { key: v.string() },
   handler: async (ctx, args) => {
+    ctx = await tenantContext(ctx);
     const existing = await ctx.db
       .query("settings")
       .withIndex("by_key", (q) => q.eq("key", args.key))
