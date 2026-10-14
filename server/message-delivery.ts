@@ -6,5 +6,8 @@ export async function deliverToConversation(conversationId: string, text: string
   } else if (conversationId.startsWith("telegram:")) {
     const { sendTelegramReply } = await import("./telegram.js");
     await sendTelegramReply(conversationId, text);
+  } else if (conversationId.startsWith("whatsapp:")) {
+    const { sendWhatsAppReply } = await import("./whatsapp.js");
+    await sendWhatsAppReply(conversationId, text);
   }
 }

@@ -6,6 +6,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "whatsapp": "npm run preflight && tsx scripts/whatsapp.ts",
     "setup": "tsx scripts/setup.ts",
     "sendblue:sync": "node scripts/sendblue-sync.mjs",
     "sendblue:webhook": "node scripts/sendblue-webhook.mjs",
@@ -32,6 +33,7 @@
     "@huggingface/transformers": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@openai/agents": "^0.18.0",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
     "cheerio": "^1.2.0",
     "convex": "^1.36.1",
     "cors": "^2.8.5",
@@ -40,6 +42,8 @@
     "express": "^5.0.0",
     "jose": "^6.2.12",
     "openai": "^7.27.0",
+    "pino": "10.4.0",
+    "qrcode-terminal": "0.12.0",
     "react-force-graph-2d": "^1.27.0",
     "ws": "^8.18.0",
     "zod": "^4.6.5"
@@ -50,6 +54,7 @@
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/prompts": "^2.4.9",
+    "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.5.12",

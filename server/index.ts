@@ -17,6 +17,7 @@ import { ensureProactiveWatcher } from "./proactive-email.js";
 import { preloadLocalModel } from "./embeddings.js";
 import { createMemoryRouter } from "./memory-routes.js";
 import { startTelegramLoop } from "./telegram.js";
+import { startWhatsApp, whatsAppStatus } from "./whatsapp.js";
 
 async function main() {
   await loadIntegrations();
@@ -51,7 +52,7 @@ async function main() {
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, service: "boop-agent" });
+    res.json({ ok: true, service: "boop-agent", whatsapp: whatsAppStatus() });
   });
 
   app.use("/sendblue", createSendblueRouter());
@@ -115,6 +116,14 @@ async function main() {
     console.log(`  chat        POST http://localhost:${port}/chat`);
     console.log(`  sendblue    POST http://localhost:${port}/sendblue/webhook`);
     console.log(`  websocket   WS   ws://localhost:${port}/ws`);
+    // Start only after binding the port, so a second server cannot open another
+    // linked-device session before failing with EADDRINUSE.
+    void startWhatsApp().then((stop) => {
+      if (!stop) return;
+      const shutdown = () => { void stop().finally(() => process.exit(0)); };
+      process.once("SIGINT", shutdown);
+      process.once("SIGTERM", shutdown);
+    }).catch((error) => console.error("[whatsapp] Startup failed:", error instanceof Error ? error.message : "unknown error"));
   });
 }
 
