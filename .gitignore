@@ -17,3 +17,7 @@ data/
 debug/dist/
 .cache/
 .tsbuildinfo
+
+# Runtime deployment secrets
+deploy/aws/agent.env
+deploy/aws/runtime-data/

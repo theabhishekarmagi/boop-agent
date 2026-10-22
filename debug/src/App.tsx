@@ -64,10 +64,17 @@ function getStoredTheme(): Theme {
   }
 }
 
-export function App() {
+export function App({
+  onSignOut,
+  signingOut = false,
+}: {
+  onSignOut?: () => Promise<void>;
+  signingOut?: boolean;
+}) {
   const [view, setView] = useState<View>("dashboard");
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
   const { connected } = useSocket();
+  const profile = useQuery(api.auth.currentUser, {});
 
   const counts = useQuery(api.memoryRecords.countsByTier, {});
   const agents = useQuery(api.agents.list, {});
@@ -92,17 +99,23 @@ export function App() {
       {/* Top bar */}
       <header
         className={`flex items-center justify-between px-5 py-2.5 border-b shrink-0 ${
-          isDark ? "border-slate-800 bg-slate-950/80" : "border-slate-200 bg-white/80"
+          isDark
+            ? "border-slate-800 bg-slate-950/80"
+            : "border-slate-200 bg-white/80"
         } backdrop-blur-sm`}
       >
         <div className="flex items-center gap-3">
-          <img src="/lunagotchi.png" alt="Boop" className="w-7 h-7 rounded-lg" />
+          <img
+            src="/lunagotchi.png"
+            alt="Boop"
+            className="w-7 h-7 rounded-lg"
+          />
           <h1
             className={`text-sm font-bold tracking-wide uppercase ${
               isDark ? "text-slate-400" : "text-slate-500"
             }`}
           >
-            Boop Debug
+            {onSignOut ? "Boop" : "Boop Debug"}
           </h1>
           <div
             className={`flex items-center gap-1.5 text-xs ${
@@ -124,6 +137,16 @@ export function App() {
         </div>
 
         <div className="flex items-center gap-4">
+          {profile && <span className="hidden sm:block text-xs opacity-70" title="Your workspace">{profile.email}</span>}
+          {onSignOut && (
+            <button
+              onClick={onSignOut}
+              disabled={signingOut}
+              className="rounded-lg border border-slate-500/30 px-3 py-1.5 text-xs hover:bg-slate-500/10 disabled:opacity-50"
+            >
+              {signingOut ? "Signing out…" : "Sign out"}
+            </button>
+          )}
           {counts && (
             <div className="flex items-center gap-4">
               <MetricPill label="Short" value={counts.short} isDark={isDark} />
@@ -182,7 +205,9 @@ export function App() {
         {/* Sidebar */}
         <nav
           className={`w-[168px] shrink-0 border-r flex flex-col py-1.5 ${
-            isDark ? "border-slate-800 bg-slate-950/50" : "border-slate-200 bg-white/50"
+            isDark
+              ? "border-slate-800 bg-slate-950/50"
+              : "border-slate-200 bg-white/50"
           }`}
         >
           {NAV.map((item) => (
@@ -199,7 +224,11 @@ export function App() {
                     : "text-slate-500 hover:text-slate-700 hover:bg-slate-100/60"
               }`}
             >
-              <HugeiconsIcon icon={NAV_ICONS[item.id]} size={18} className="shrink-0" />
+              <HugeiconsIcon
+                icon={NAV_ICONS[item.id]}
+                size={18}
+                className="shrink-0"
+              />
               {item.label}
               {item.id === "agents" && activeAgentCount > 0 && (
                 <span className="ml-auto flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-sky-500 text-white">
@@ -250,7 +279,9 @@ function MetricPill({
 }) {
   return (
     <div className="flex items-center gap-1.5 text-xs">
-      <span className={isDark ? "text-slate-500" : "text-slate-400"}>{label}</span>
+      <span className={isDark ? "text-slate-500" : "text-slate-400"}>
+        {label}
+      </span>
       <span
         className={`mono font-semibold ${
           color ?? (isDark ? "text-slate-300" : "text-slate-700")

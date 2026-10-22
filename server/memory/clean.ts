@@ -1,3 +1,4 @@
+import { forEachWorkspace } from "../workspace-jobs.js";
 import { api } from "../../convex/_generated/api.js";
 import { convex } from "../convex-client.js";
 
@@ -83,7 +84,7 @@ export async function cleanMemories(): Promise<{
 
 export function startCleanupLoop(intervalMs = 6 * 60 * 60 * 1000): () => void {
   const timer = setInterval(() => {
-    cleanMemories().catch((err) => console.error("[memory.clean] loop error", err));
+    forEachWorkspace(() => cleanMemories()).catch((err) => console.error("[memory.clean] loop error", err));
   }, intervalMs);
   return () => clearInterval(timer);
 }

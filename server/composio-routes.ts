@@ -16,12 +16,27 @@ import {
 import { refreshIntegrations } from "./integrations/registry.js";
 import { getStoredWebhookSecret } from "./composio-webhook.js";
 import { handleEmailEvent } from "./proactive-email.js";
+import { beginTelegramChat, telegramChatStatus } from "./telegram.js";
+import { convex } from "./convex-client.js";
+import { api } from "../convex/_generated/api.js";
 
 export function createComposioRouter(): express.Router {
   const router = express.Router();
 
   router.get("/status", (_req, res) => {
     res.json({ enabled: Boolean(getComposio()) });
+  });
+
+  router.get("/connections/:id/telegram-chat", async (req, res) => {
+    try { res.json(await telegramChatStatus(req.params.id)); }
+    catch { res.status(400).json({ error: "Unable to load Telegram chat for this connection." }); }
+  });
+  router.post("/connections/:id/telegram-chat", async (req, res) => {
+    try { res.json(await beginTelegramChat(req.params.id)); }
+    catch (error) {
+      res.status(400).json({ error: error instanceof Error && error.message.startsWith("This bot is already")
+        ? error.message : "Unable to start Telegram chat. Check that this bot is connected and try again." });
+    }
   });
 
   router.get("/toolkits", async (req, res) => {
@@ -159,6 +174,7 @@ export function createComposioRouter(): express.Router {
     }
     try {
       await disconnectToolkit(connectionId);
+      await convex.mutation(api.telegramChannels.remove, { connectionId });
       await refreshIntegrations();
       res.json({ ok: true });
     } catch (err) {

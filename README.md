@@ -36,6 +36,7 @@ Built on:
 ## What you get
 
 - **iMessage in / iMessage out** via Sendblue (with typing indicators and webhook dedup).
+- **WhatsApp personal agent** via a registered Twilio sender, signed webhooks and an approved-sender allowlist. See [setup instructions](TWILIO_WHATSAPP.md).
 - **Sendblue CLI integration** — `npm run dev` auto-registers the inbound webhook for you every restart (no re-pasting into the dashboard when free ngrok rotates your URL).
 - **Dispatcher + workers** pattern: a lean interaction agent decides what to do, spawns focused sub-agents that actually do the work.
 - **Pure dispatcher** — the interaction agent has only memory + spawn + automation + draft tools. Web access, files, and integrations are explicitly denied to it; sub-agents get `WebSearch` / `WebFetch` / the integrations.
@@ -124,6 +125,10 @@ You need accounts for these. Keep the tabs open — setup will ask for credentia
 
 ---
 
+## Google account sign-in
+
+The new account page supports Google sign-in and account creation using Better Auth with Convex. See [GOOGLE_AUTH.md](GOOGLE_AUTH.md) for credential setup and local testing. Open `http://localhost:5173/login`; successful local sign-in opens `http://localhost:5173/dashboard`. The direct operator route remains at `http://localhost:5173/debug` during local development. Authentication is implemented; per-user agent data and WhatsApp onboarding still need to be connected before a public launch.
+
 ## Quickstart
 
 ```bash
@@ -210,7 +215,7 @@ The banner will look like:
 ════════════════════════════════════════════════════════════════════
   Boop is ready — ngrok tunnel is live  (webhook auto-registered).
 
-  🐶 Debug dashboard (click me):   http://localhost:5173
+  🐶 Debug dashboard (click me):   http://localhost:5173/debug
   🌐 Public URL:                   https://abc123.ngrok-free.app
   📮 Sendblue webhook (inbound):   https://abc123.ngrok-free.app/sendblue/webhook
   📱 Text this Sendblue number:    +13053369541  (from a DIFFERENT phone)
@@ -265,7 +270,7 @@ SENDBLUE_AUTO_WEBHOOK=false
 
 `npm run dev` will still show you the webhook URL in the banner so you can paste it yourself.
 
-Visit `http://localhost:5173` for the debug dashboard (chat, agents, memory, events). You can also chat from the dashboard's Chat tab without Sendblue.
+Visit `http://localhost:5173/debug` for the debug dashboard (chat, agents, memory, events). You can also chat from the dashboard's Chat tab without Sendblue.
 
 **This is the full first-run.** You now have a working agent that chats, remembers, and schedules reminders. Enable integrations (Gmail, Calendar, Notion, Slack) when you want more — see the next section.
 

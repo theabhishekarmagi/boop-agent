@@ -1,3 +1,4 @@
+import { requireWorkspaceOwner } from "./model/auth";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -17,7 +18,8 @@ export const create = mutation({
     payload: v.string(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("drafts", {
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.insert("drafts", { ownerId,
       ...args,
       status: "pending",
       createdAt: Date.now(),
@@ -28,9 +30,10 @@ export const create = mutation({
 export const get = query({
   args: { draftId: v.string() },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     return await ctx.db
       .query("drafts")
-      .withIndex("by_draft_id", (q) => q.eq("draftId", args.draftId))
+      .withIndex("by_owner_draft_id", (q) => q.eq("ownerId", ownerId).eq("draftId", args.draftId))
       .unique();
   },
 });
@@ -38,10 +41,10 @@ export const get = query({
 export const pendingByConversation = query({
   args: { conversationId: v.string() },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     return await ctx.db
       .query("drafts")
-      .withIndex("by_conversation_status", (q) =>
-        q.eq("conversationId", args.conversationId).eq("status", "pending"),
+      .withIndex("by_owner_conversation_status", (q) => q.eq("ownerId", ownerId).eq("conversationId", args.conversationId).eq("status", "pending"),
       )
       .order("desc")
       .take(25);
@@ -51,16 +54,18 @@ export const pendingByConversation = query({
 export const recent = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    return await ctx.db.query("drafts").order("desc").take(args.limit ?? 50);
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.query("drafts").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(args.limit ?? 50);
   },
 });
 
 export const setStatus = mutation({
   args: { draftId: v.string(), status: statusV },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const draft = await ctx.db
       .query("drafts")
-      .withIndex("by_draft_id", (q) => q.eq("draftId", args.draftId))
+      .withIndex("by_owner_draft_id", (q) => q.eq("ownerId", ownerId).eq("draftId", args.draftId))
       .unique();
     if (!draft) return null;
     await ctx.db.patch(draft._id, { status: args.status, decidedAt: Date.now() });

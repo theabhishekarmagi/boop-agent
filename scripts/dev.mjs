@@ -42,6 +42,9 @@ const publicUrl = envVars.PUBLIC_URL || "";
 const hasStaticUrl =
   publicUrl && !publicUrl.includes("localhost") && !publicUrl.includes("127.0.0.1");
 const useNgrok = !hasStaticUrl || Boolean(ngrokDomain);
+const twilioWhatsApp = Boolean(envVars.TWILIO_ACCOUNT_SID && envVars.TWILIO_WHATSAPP_FROM && envVars.TWILIO_WHATSAPP_WEBHOOK_URL);
+const tunnelPort = twilioWhatsApp ? (envVars.TWILIO_WHATSAPP_WEBHOOK_PORT || "3457") : port;
+let dashboardUrl = "http://localhost:5173";
 
 // --- binary detection ---------------------------------------------------
 function hasBinary(name) {
@@ -107,7 +110,7 @@ function run(name, cmd, args, readyPattern) {
       }
 
       if (line.trim()) process.stdout.write(prefix + line + "\n");
-      if (readyPattern && readyPattern.test(plain)) resolveReady();
+      if (readyPattern && readyPattern.test(plain)) resolveReady(plain);
     }
   };
   child.stdout.on("data", feed);
@@ -117,16 +120,27 @@ function run(name, cmd, args, readyPattern) {
 }
 
 // --- ngrok URL banner: poll local API after launch ----------------------
+async function existingTunnels() {
+  try {
+    const res = await fetch("http://127.0.0.1:4040/api/tunnels", { signal: AbortSignal.timeout(1500) });
+    if (res.ok) return (await res.json()).tunnels ?? [];
+  } catch { /* No local agent running. */ }
+  return [];
+}
+
+function matchingTunnel(tunnels) {
+  return tunnels.find((t) => {
+    try { return t.proto === "https" && new URL(t.config.addr).port === String(tunnelPort); }
+    catch { return false; }
+  })?.public_url;
+}
+
 async function waitForNgrokUrl(timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch("http://127.0.0.1:4040/api/tunnels");
-      if (res.ok) {
-        const data = await res.json();
-        const https = data.tunnels?.find((t) => t.proto === "https")?.public_url;
-        if (https) return https;
-      }
+      const https = matchingTunnel(await existingTunnels());
+      if (https) return https;
     } catch {
       /* not up yet */
     }
@@ -137,8 +151,21 @@ async function waitForNgrokUrl(timeoutMs = 15000) {
 
 function showBanner(url, stable) {
   const line = "═".repeat(68);
+  if (twilioWhatsApp) {
+    const webhook = `${url}/twilio/whatsapp/webhook`;
+    console.log(`\n${C.banner}${line}
+  Boop sign in:          ${dashboardUrl}/login
+  Debug dashboard:       ${dashboardUrl}/debug
+  WhatsApp webhook:      ${webhook}  (POST)
+  Public tunnel target: webhook-only port ${tunnelPort}
+${line}${C.reset}\n`);
+    if (webhook !== envVars.TWILIO_WHATSAPP_WEBHOOK_URL) {
+      console.log("Update TWILIO_WHATSAPP_WEBHOOK_URL and the Twilio sender to this URL, then restart Boop.");
+    }
+    return;
+  }
   const webhook = `${url}/sendblue/webhook`;
-  const dashboard = `http://localhost:5173`;
+  const dashboard = `${dashboardUrl}/debug`;
   const from = envVars.SENDBLUE_FROM_NUMBER;
   const fromLine = from
     ? `  📱 Text this Sendblue number:  ${from}  (from a DIFFERENT phone)`
@@ -178,7 +205,7 @@ ${C.dim}  Install:   brew install ngrok         (macOS)
              or download from https://ngrok.com/download
   Auth:      ngrok config add-authtoken <token>
              (free token at https://dashboard.ngrok.com)
-  Without ngrok you can still use the debug dashboard at http://localhost:5173
+  Without ngrok you can still use the debug dashboard at http://localhost:5173/debug
   — iMessage replies via Sendblue won't work until your server is reachable.${C.reset}
 `);
   }
@@ -212,15 +239,31 @@ const debugChild = run(
   /Local:\s+http/,
 );
 const children = [serverChild, convexChild, debugChild];
+const coreChildren = new Set(children);
+
+// The dashboard is usable independently of tunnel registration and slower services.
+void debugChild.ready.then((line) => {
+  dashboardUrl = line.match(/https?:\/\/[^\s]+/)?.[0]?.replace(/\/$/, "") ?? dashboardUrl;
+  console.log(`\n${C.banner}Open Boop sign in: ${dashboardUrl}/login\nOperator dashboard: ${dashboardUrl}/debug${C.reset}\n`);
+});
 
 let ngrokUrlReady = Promise.resolve(null);
 if (useNgrok && ngrokInstalled) {
-  const args = ngrokDomain
-    ? ["http", port, `--domain=${ngrokDomain}`, "--log=stdout", "--log-format=term", "--log-level=info"]
-    : ["http", port, "--log=stdout", "--log-format=term", "--log-level=info"];
-  const ngrokChild = run("ngrok", "ngrok", args);
-  children.push(ngrokChild);
-  ngrokUrlReady = waitForNgrokUrl().catch(() => null);
+  const tunnels = await existingTunnels();
+  const existing = matchingTunnel(tunnels);
+  if (existing) {
+    console.log(`Reusing the running ngrok tunnel to port ${tunnelPort}: ${existing}`);
+    ngrokUrlReady = Promise.resolve(existing);
+  } else if (tunnels.length) {
+    console.log(`ngrok is already running for another port. Dashboard will still run; WhatsApp needs a tunnel to port ${tunnelPort}.`);
+  } else {
+    const args = ngrokDomain
+      ? ["http", tunnelPort, `--domain=${ngrokDomain}`, "--log=stdout", "--log-format=term", "--log-level=info"]
+      : ["http", tunnelPort, "--log=stdout", "--log-format=term", "--log-level=info"];
+    const ngrokChild = run("ngrok", "ngrok", args);
+    children.push(ngrokChild);
+    ngrokUrlReady = waitForNgrokUrl().catch(() => null);
+  }
 }
 
 // Wait for all the core services to be ready before printing the banner,
@@ -278,13 +321,13 @@ Promise.all([
       if (ngrokUrl) {
         // Only auto-register for ephemeral ngrok URLs. Reserved domains and
         // static URLs are already fixed in the Sendblue dashboard.
-        if (!ngrokDomain) {
+        if (!twilioWhatsApp && !ngrokDomain) {
           await autoRegisterWebhook(ngrokUrl);
         }
         // Composio webhook subscription is fully programmatic (PATCHable),
         // so we can refresh it on every restart regardless of whether the
         // domain is reserved.
-        await autoRegisterComposioWebhook(ngrokUrl);
+        if (!twilioWhatsApp) await autoRegisterComposioWebhook(ngrokUrl);
         showBanner(ngrokUrl, Boolean(ngrokDomain));
       } else {
         console.log(
@@ -299,7 +342,8 @@ Promise.all([
 ${C.banner}${line}
   Boop is running locally.
 
-  🐶 Debug dashboard:   http://localhost:5173
+  🐶 Debug dashboard:   ${dashboardUrl}/debug
+  Google sign in:       ${dashboardUrl}/login
 
   ⚠ No public tunnel configured. iMessage won't work until you expose
     the server. Use the Chat tab in the dashboard to test for now.
@@ -327,6 +371,10 @@ process.on("SIGTERM", () => shutdown(0));
 for (const c of children) {
   c.on("exit", (code) => {
     if (!shuttingDown && code !== null && code !== 0) {
+      if (!coreChildren.has(c)) {
+        console.warn("\nPublic tunnel stopped. The local dashboard will keep running.");
+        return;
+      }
       console.error(`\nA child process exited with code ${code}. Shutting down.`);
       shutdown(code);
     }

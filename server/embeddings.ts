@@ -78,6 +78,7 @@ async function getLocalExtractor(): Promise<FeatureExtractionPipeline> {
     const start = Date.now();
     const ext = await pipeline("feature-extraction", LOCAL_MODEL, {
       dtype: "fp32",
+      ...(process.env.BOOP_EMBEDDING_CACHE ? { cache_dir: process.env.BOOP_EMBEDDING_CACHE } : {}),
     });
     console.log(`[embeddings] local model ready in ${Date.now() - start}ms`);
     extractor = ext;

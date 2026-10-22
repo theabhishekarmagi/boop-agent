@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { sessionToken } from "./api-fetch";
 
 export interface SocketEvent {
   event: string;
@@ -21,7 +22,12 @@ export function useSocket(onEvent?: (e: SocketEvent) => void) {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const url = `${proto}//${location.host}/ws`;
       ws = new WebSocket(url);
-      ws.onopen = () => setConnected(true);
+      const socket = ws;
+      ws.onopen = () => {
+        void sessionToken().then(token => {
+          if (!cancelled && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "auth", token }));
+        }).catch(() => socket.close());
+      };
       ws.onclose = () => {
         setConnected(false);
         reconnectTimer = setTimeout(connect, 1500);
@@ -30,6 +36,7 @@ export function useSocket(onEvent?: (e: SocketEvent) => void) {
       ws.onmessage = (evt) => {
         try {
           const parsed = JSON.parse(evt.data) as SocketEvent;
+          if (parsed.event === "hello") setConnected(true);
           handlerRef.current?.(parsed);
         } catch {
           /* ignore */

@@ -180,6 +180,8 @@ function randomId(prefix: string): string {
 }
 
 export async function handleUserMessage(opts: HandleOpts): Promise<string> {
+  const { ensureIntegrations } = await import("./integrations/registry.js");
+  await ensureIntegrations();
   const turnId = randomId("turn");
   const integrations = availableIntegrations();
 

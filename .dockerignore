@@ -1,0 +1,14 @@
+node_modules
+.git
+.env*
+data
+.convex
+.cache
+.agents
+.claude
+.codex
+*.log
+debug/dist
+
+deploy/aws/agent.env
+deploy/aws/runtime-data

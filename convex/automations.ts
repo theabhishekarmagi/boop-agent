@@ -1,3 +1,4 @@
+import { requireWorkspaceOwner } from "./model/auth";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -14,12 +15,13 @@ export const create = mutation({
     nextRunAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const existing = await ctx.db
       .query("automations")
-      .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
+      .withIndex("by_owner_automation_id", (q) => q.eq("ownerId", ownerId).eq("automationId", args.automationId))
       .unique();
     if (existing) return existing._id;
-    return await ctx.db.insert("automations", {
+    return await ctx.db.insert("automations", { ownerId,
       ...args,
       enabled: true,
       createdAt: Date.now(),
@@ -30,14 +32,15 @@ export const create = mutation({
 export const list = query({
   args: { enabledOnly: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     let results;
     if (args.enabledOnly) {
       results = await ctx.db
         .query("automations")
-        .withIndex("by_enabled", (q) => q.eq("enabled", true))
-        .collect();
+        .withIndex("by_owner_enabled", (q) => q.eq("ownerId", ownerId).eq("enabled", true))
+        .take(1000);
     } else {
-      results = await ctx.db.query("automations").order("desc").collect();
+      results = await ctx.db.query("automations").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(1000);
     }
     return results;
   },
@@ -46,9 +49,10 @@ export const list = query({
 export const get = query({
   args: { automationId: v.string() },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     return await ctx.db
       .query("automations")
-      .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
+      .withIndex("by_owner_automation_id", (q) => q.eq("ownerId", ownerId).eq("automationId", args.automationId))
       .unique();
   },
 });
@@ -56,9 +60,10 @@ export const get = query({
 export const setEnabled = mutation({
   args: { automationId: v.string(), enabled: v.boolean() },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const auto = await ctx.db
       .query("automations")
-      .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
+      .withIndex("by_owner_automation_id", (q) => q.eq("ownerId", ownerId).eq("automationId", args.automationId))
       .unique();
     if (!auto) return null;
     await ctx.db.patch(auto._id, { enabled: args.enabled });
@@ -69,9 +74,10 @@ export const setEnabled = mutation({
 export const remove = mutation({
   args: { automationId: v.string() },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const auto = await ctx.db
       .query("automations")
-      .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
+      .withIndex("by_owner_automation_id", (q) => q.eq("ownerId", ownerId).eq("automationId", args.automationId))
       .unique();
     if (!auto) return null;
     await ctx.db.delete(auto._id);
@@ -86,9 +92,10 @@ export const markRan = mutation({
     nextRunAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const auto = await ctx.db
       .query("automations")
-      .withIndex("by_automation_id", (q) => q.eq("automationId", args.automationId))
+      .withIndex("by_owner_automation_id", (q) => q.eq("ownerId", ownerId).eq("automationId", args.automationId))
       .unique();
     if (!auto) return null;
     await ctx.db.patch(auto._id, {
@@ -105,7 +112,10 @@ export const createRun = mutation({
     automationId: v.string(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("automationRuns", {
+    const ownerId = await requireWorkspaceOwner(ctx);
+    const parent = await ctx.db.query("automations").withIndex("by_owner_automation_id", q => q.eq("ownerId", ownerId).eq("automationId", args.automationId)).unique();
+    if (!parent) throw new Error("Automation not found in your workspace");
+    return await ctx.db.insert("automationRuns", { ownerId,
       ...args,
       status: "running",
       startedAt: Date.now(),
@@ -122,9 +132,10 @@ export const updateRun = mutation({
     agentId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const run = await ctx.db
       .query("automationRuns")
-      .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
+      .withIndex("by_owner_run_id", (q) => q.eq("ownerId", ownerId).eq("runId", args.runId))
       .unique();
     if (!run) return null;
     const completed = args.status !== "running";
@@ -140,14 +151,15 @@ export const updateRun = mutation({
 export const recentRuns = query({
   args: { automationId: v.optional(v.string()), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const limit = args.limit ?? 50;
     if (args.automationId) {
       return await ctx.db
         .query("automationRuns")
-        .withIndex("by_automation", (q) => q.eq("automationId", args.automationId!))
+        .withIndex("by_owner_automation", (q) => q.eq("ownerId", ownerId).eq("automationId", args.automationId!))
         .order("desc")
         .take(limit);
     }
-    return await ctx.db.query("automationRuns").order("desc").take(limit);
+    return await ctx.db.query("automationRuns").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(limit);
   },
 });

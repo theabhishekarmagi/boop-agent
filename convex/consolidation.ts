@@ -1,3 +1,4 @@
+import { requireWorkspaceOwner } from "./model/auth";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -10,7 +11,8 @@ const statusV = v.union(
 export const createRun = mutation({
   args: { runId: v.string(), trigger: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("consolidationRuns", {
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.insert("consolidationRuns", { ownerId,
       ...args,
       status: "running",
       proposalsCount: 0,
@@ -32,10 +34,11 @@ export const updateRun = mutation({
     details: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const { runId, ...patch } = args;
     const run = await ctx.db
       .query("consolidationRuns")
-      .withIndex("by_run_id", (q) => q.eq("runId", runId))
+      .withIndex("by_owner_run_id", (q) => q.eq("ownerId", ownerId).eq("runId", runId))
       .unique();
     if (!run) return null;
     const done = patch.status && patch.status !== "running";
@@ -47,6 +50,7 @@ export const updateRun = mutation({
 export const listRuns = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    return await ctx.db.query("consolidationRuns").order("desc").take(args.limit ?? 25);
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.query("consolidationRuns").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(args.limit ?? 25);
   },
 });

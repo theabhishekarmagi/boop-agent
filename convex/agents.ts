@@ -1,3 +1,4 @@
+import { requireWorkspaceOwner } from "./model/auth";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -18,7 +19,8 @@ export const create = mutation({
     mcpServers: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("executionAgents", {
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.insert("executionAgents", { ownerId,
       ...args,
       status: "spawned",
       inputTokens: 0,
@@ -42,10 +44,11 @@ export const update = mutation({
     costUsd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const { agentId, ...patch } = args;
     const agent = await ctx.db
       .query("executionAgents")
-      .withIndex("by_agent_id", (q) => q.eq("agentId", agentId))
+      .withIndex("by_owner_agent_id", (q) => q.eq("ownerId", ownerId).eq("agentId", agentId))
       .unique();
     if (!agent) return null;
     const completed = patch.status && ["completed", "failed", "cancelled"].includes(patch.status);
@@ -69,31 +72,36 @@ export const addLog = mutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("agentLogs", { ...args, createdAt: Date.now() });
+    const ownerId = await requireWorkspaceOwner(ctx);
+    const parent = await ctx.db.query("executionAgents").withIndex("by_owner_agent_id", q => q.eq("ownerId", ownerId).eq("agentId", args.agentId)).unique();
+    if (!parent) throw new Error("Agent not found in your workspace");
+    return await ctx.db.insert("agentLogs", { ownerId, ...args, createdAt: Date.now() });
   },
 });
 
 export const list = query({
   args: { status: v.optional(statusV), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const limit = args.limit ?? 50;
     if (args.status) {
       return await ctx.db
         .query("executionAgents")
-        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .withIndex("by_owner_status", (q) => q.eq("ownerId", ownerId).eq("status", args.status!))
         .order("desc")
         .take(limit);
     }
-    return await ctx.db.query("executionAgents").order("desc").take(limit);
+    return await ctx.db.query("executionAgents").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(limit);
   },
 });
 
 export const get = query({
   args: { agentId: v.string() },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     return await ctx.db
       .query("executionAgents")
-      .withIndex("by_agent_id", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_owner_agent_id", (q) => q.eq("ownerId", ownerId).eq("agentId", args.agentId))
       .unique();
   },
 });
@@ -101,9 +109,10 @@ export const get = query({
 export const getLogs = query({
   args: { agentId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     return await ctx.db
       .query("agentLogs")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_owner_agent", (q) => q.eq("ownerId", ownerId).eq("agentId", args.agentId))
       .order("asc")
       .take(args.limit ?? 500);
   },

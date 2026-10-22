@@ -1,3 +1,4 @@
+import { forEachWorkspace } from "./workspace-jobs.js";
 import { mainModel, smallModel, resolveModelInput } from "./model-config.js";
 import { runAgentQuery } from "./openai-runtime.js";
 import { api } from "../convex/_generated/api.js";
@@ -470,7 +471,7 @@ export async function runConsolidation(trigger = "scheduled"): Promise<{
 
 export function startConsolidationLoop(intervalMs = 24 * 60 * 60 * 1000): () => void {
   const timer = setInterval(() => {
-    runConsolidation("scheduled").catch((err) =>
+    forEachWorkspace(() => runConsolidation("scheduled")).catch((err) =>
       console.error("[consolidation] loop error", err),
     );
   }, intervalMs);

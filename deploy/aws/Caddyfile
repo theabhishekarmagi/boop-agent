@@ -1,0 +1,16 @@
+:8080 {
+    handle_path /api/* {
+        # Personal operator webhooks are not exposed by this preview.
+        @operator path /sendblue/* /twilio/* /composio/webhook
+        respond @operator 404
+        reverse_proxy agent:3456
+    }
+    handle /ws {
+        reverse_proxy agent:3456
+    }
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}

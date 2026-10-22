@@ -1,0 +1,135 @@
+.auth-page {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px 80px;
+  background: #fff;
+  color: #111;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.auth-page * {
+  box-sizing: border-box;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 308px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.auth-mascot {
+  display: block;
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.auth-name {
+  margin: 12px 0 0;
+  font: inherit;
+  font-weight: 400;
+}
+
+.auth-page button {
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.auth-page .auth-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  width: 100%;
+  min-height: 54px;
+  margin-top: 42px;
+  padding: 14px 19px;
+  border: 1px solid #dce1d6;
+  border-radius: 10px;
+  background: #fff;
+  color: #2f3930;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 3px #24352706;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms,
+    background-color 150ms;
+}
+.auth-google svg {
+  flex-shrink: 0;
+}
+.auth-google span {
+  flex: 1;
+}
+.auth-google:hover:not(:disabled) {
+  border-color: #8ea78a;
+  box-shadow: 0 3px 12px #2435270c;
+}
+.auth-google:active:not(:disabled) {
+  background: #f7f8f5;
+}
+.auth-page button:focus-visible {
+  outline: 2px solid #111;
+  outline-offset: 5px;
+}
+.auth-page button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.auth-page button[aria-busy="true"] {
+  cursor: wait;
+}
+
+.auth-error {
+  margin-top: 24px;
+  color: #a12622;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.auth-error p {
+  margin: 0;
+}
+.auth-error button {
+  margin-top: 8px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+}
+
+.auth-profile {
+  margin-top: 24px;
+  overflow-wrap: anywhere;
+  width: 100%;
+}
+.auth-profile p {
+  margin: 8px 0 0;
+}
+.auth-profile p:not(:first-child) {
+  font-size: 14px;
+  color: #666;
+}
+
+@media (max-width: 480px) {
+  .auth-page {
+    padding: 32px 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-page .auth-google {
+    transition: none;
+  }
+}

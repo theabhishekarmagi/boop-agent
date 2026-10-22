@@ -1,3 +1,4 @@
+import { workspaceKey, currentOwner } from "./workspace-context.js";
 import { runAgentQuery } from "./openai-runtime.js";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
@@ -90,10 +91,12 @@ export interface SpawnResult {
 }
 
 export async function spawnExecutionAgent(opts: SpawnOptions): Promise<SpawnResult> {
+  const { ensureIntegrations } = await import("./integrations/registry.js");
+  await ensureIntegrations();
   const agentId = randomId("agent");
   const name = opts.name ?? (opts.integrations.join("+") || "general");
   const abort = new AbortController();
-  running.set(agentId, abort);
+  running.set(workspaceKey(agentId), abort);
 
   const shortId = agentId.slice(-6);
   const logAgent = (msg: string) => console.log(`[agent ${shortId}] ${msg}`);
@@ -206,7 +209,7 @@ export async function spawnExecutionAgent(opts: SpawnOptions): Promise<SpawnResu
       content: errorMsg,
     });
   } finally {
-    running.delete(agentId);
+    running.delete(workspaceKey(agentId));
   }
 
   const elapsed = ((Date.now() - agentStart) / 1000).toFixed(1);
@@ -246,14 +249,14 @@ export async function spawnExecutionAgent(opts: SpawnOptions): Promise<SpawnResu
 }
 
 export function cancelAgent(agentId: string): boolean {
-  const abort = running.get(agentId);
+  const abort = running.get(workspaceKey(agentId));
   if (!abort) return false;
   abort.abort();
   return true;
 }
 
 export function runningAgentIds(): string[] {
-  return [...running.keys()];
+  return [...running.keys()].map(key => JSON.parse(key) as [string, string]).filter(([owner]) => owner === currentOwner()).map(([, id]) => id);
 }
 
 export async function retryAgent(agentId: string): Promise<SpawnResult | null> {

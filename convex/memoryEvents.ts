@@ -1,3 +1,4 @@
+import { requireWorkspaceOwner } from "./model/auth";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -10,23 +11,26 @@ export const emit = mutation({
     data: v.string(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("memoryEvents", { ...args, createdAt: Date.now() });
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.insert("memoryEvents", { ownerId, ...args, createdAt: Date.now() });
   },
 });
 
 export const recent = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    return await ctx.db.query("memoryEvents").order("desc").take(args.limit ?? 100);
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.query("memoryEvents").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(args.limit ?? 100);
   },
 });
 
 export const byConversation = query({
   args: { conversationId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     return await ctx.db
       .query("memoryEvents")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_owner_conversation", (q) => q.eq("ownerId", ownerId).eq("conversationId", args.conversationId))
       .order("desc")
       .take(args.limit ?? 50);
   },

@@ -1,3 +1,4 @@
+import { requireWorkspaceOwner } from "./model/auth";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -10,12 +11,13 @@ export const send = mutation({
     turnId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const now = Date.now();
-    const id = await ctx.db.insert("messages", { ...args, createdAt: now });
+    const id = await ctx.db.insert("messages", { ownerId, ...args, createdAt: now });
 
     const conv = await ctx.db
       .query("conversations")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_owner_conversation", (q) => q.eq("ownerId", ownerId).eq("conversationId", args.conversationId))
       .unique();
     if (conv) {
       await ctx.db.patch(conv._id, {
@@ -23,7 +25,7 @@ export const send = mutation({
         lastActivityAt: now,
       });
     } else {
-      await ctx.db.insert("conversations", {
+      await ctx.db.insert("conversations", { ownerId,
         conversationId: args.conversationId,
         messageCount: 1,
         lastActivityAt: now,
@@ -36,9 +38,10 @@ export const send = mutation({
 export const list = query({
   args: { conversationId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     return await ctx.db
       .query("messages")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_owner_conversation", (q) => q.eq("ownerId", ownerId).eq("conversationId", args.conversationId))
       .order("desc")
       .take(args.limit ?? 50);
   },
@@ -47,9 +50,10 @@ export const list = query({
 export const recent = query({
   args: { conversationId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const msgs = await ctx.db
       .query("messages")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_owner_conversation", (q) => q.eq("ownerId", ownerId).eq("conversationId", args.conversationId))
       .order("desc")
       .take(args.limit ?? 20);
     return msgs.reverse();

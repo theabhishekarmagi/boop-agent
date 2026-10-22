@@ -82,3 +82,29 @@ test("Telegram long replies preserve emoji and content within message limits", (
   assert(chunks.every((s) => s.length <= 4000));
   assert(chunks.every((s) => !/[\uD800-\uDBFF]$/.test(s)));
 });
+
+
+test("workspace Telegram pairing greets once and ignores unauthorized senders", async () => {
+  const state = {};
+  const sent: string[] = [];
+  let generated = 0;
+  await processTelegramBatch("ca_user_bot", [update(1), update(2, 992), update(3)], state, {
+    authorize: async item => item.update_id === 1 ? "linked" : item.message?.from?.id === 991 ? "message" : "ignore",
+    generate: async () => { generated++; return "Your own agent reply"; },
+    send: async (_id, text) => { sent.push(text); }, record: async () => {}, save: async () => {},
+  });
+  assert.equal(generated, 1);
+  assert.match(sent[0], /^Hi! Your Telegram is connected/);
+  assert.equal(sent[1], "Your own agent reply");
+  assert.equal(sent.length, 2);
+});
+
+
+test("Composio Telegram string and numeric IDs normalize to the same private sender", async () => {
+  const { privateTelegramSender } = await import("../server/telegram.js");
+  const item = update(1);
+  item.message!.chat.id = "991";
+  assert.deepEqual(privateTelegramSender(item), {chatId: "991", senderId: "991"});
+  item.message!.from!.id = "992";
+  assert.equal(privateTelegramSender(item), null);
+});

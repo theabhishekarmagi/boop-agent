@@ -1,4 +1,6 @@
 import { Composio } from "@composio/core";
+import { createHash } from "node:crypto";
+import { currentOwner, isOperator } from "./workspace-context.js";
 import { OpenAIAgentsProvider } from "@composio/openai-agents";
 import { createToolGroup, type ToolGroup } from "./openai-runtime.js";
 import type { IntegrationModule } from "./integrations/registry.js";
@@ -60,7 +62,8 @@ export function getComposio(): Composio<OpenAIAgentsProvider> | null {
 }
 
 export function boopUserId(): string {
-  return process.env.COMPOSIO_USER_ID ?? "boop-default";
+  return isOperator() ? process.env.COMPOSIO_USER_ID ?? "boop-default"
+    : `boop-${createHash("sha256").update(currentOwner()).digest("hex")}`;
 }
 
 export function displayNameFor(slug: string): string {
@@ -479,6 +482,7 @@ function extractAccountIdentity(state: unknown, data: unknown): AccountIdentity 
 }
 
 export async function renameConnection(connectionId: string, alias: string): Promise<void> {
+  await requireConnectionOwner(connectionId);
   const composio = getComposio();
   if (!composio) throw new Error("COMPOSIO_API_KEY not set");
   // Core's update() toggles enabled status; alias updates use the account API.
@@ -554,9 +558,17 @@ export async function authorizeToolkit(
 }
 
 export async function disconnectToolkit(connectionId: string): Promise<void> {
+  await requireConnectionOwner(connectionId);
   const composio = getComposio();
   if (!composio) throw new Error("COMPOSIO_API_KEY not set");
   await composio.connectedAccounts.delete(connectionId);
+}
+
+export async function requireConnectionOwner(connectionId: string): Promise<void> {
+  const connections = await listConnectedToolkits();
+  if (!connections.some(c => c.connectionId === connectionId)) {
+    throw new Error("Connection not found in your workspace");
+  }
 }
 
 export function buildComposioIntegrationModule(slug: string): IntegrationModule {

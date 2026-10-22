@@ -380,6 +380,9 @@ export async function handleEmailEvent(event: NormalizedTriggerEvent): Promise<v
   }
   const data = event.payload ?? {};
   const connectionId = event.metadata?.connectedAccount?.id ?? "(unknown)";
+  // Project webhooks include all customers. This private notification path
+  // must never consume another workspace's email.
+  if (!(await listConnectedToolkits()).some(c => c.connectionId === connectionId)) return;
   const email = normalizeEmail(data);
   console.log(
     `[proactive] event from ${connectionId}: subject=${JSON.stringify(email.subject || "(none)")} sender=${JSON.stringify(email.sender || "(none)")}`,

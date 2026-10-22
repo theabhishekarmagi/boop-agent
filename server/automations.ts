@@ -1,3 +1,4 @@
+import { forEachWorkspace } from "./workspace-jobs.js";
 import { Cron } from "croner";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
@@ -118,7 +119,7 @@ export async function tickAutomations(): Promise<void> {
 
 export function startAutomationLoop(intervalMs = 30_000): () => void {
   const timer = setInterval(() => {
-    tickAutomations().catch((err) => console.error("[automations] tick error", err));
+    forEachWorkspace(() => tickAutomations()).catch((err) => console.error("[automations] tick error", err));
   }, intervalMs);
   return () => clearInterval(timer);
 }

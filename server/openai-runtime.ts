@@ -1,3 +1,4 @@
+import { isOperator } from "./workspace-context.js";
 import { createHash } from "node:crypto";
 import OpenAI from "openai";
 import { Agent, Runner, OpenAIProvider, tool as agentTool, toolNamespace, type Tool, type FunctionTool, type Model } from "@openai/agents";
@@ -82,8 +83,8 @@ export async function* runAgentQuery({ prompt, options }: { prompt: string; opti
   signal?.throwIfAborted();
   const { tools, names } = buildTools(options.toolGroups ?? {}, options.allowedTools);
   if (options.research) {
-    const research = await researchTools(signal, options.skills ?? false);
-    if (options.skills) research.push(...localTools(signal));
+    const research = await researchTools(signal, isOperator() && (options.skills ?? false));
+    if (isOperator() && options.skills) research.push(...localTools(signal));
     // WebFetch and Skill also run locally; namespaced tools work with Plus sign-in.
     const functions = research.filter((t): t is FunctionTool => t.type === "function");
     tools.push(...research.filter((t) => t.type !== "function"),

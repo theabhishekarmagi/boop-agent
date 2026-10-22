@@ -22,16 +22,21 @@
     "login:chatgpt": "tsx scripts/chatgpt-login.ts",
     "models": "tsx scripts/chatgpt-login.ts --models",
     "test": "node --import tsx --test tests/*.test.ts",
-    "smoke:openai": "tsx scripts/smoke-openai.ts"
+    "smoke:openai": "tsx scripts/smoke-openai.ts",
+    "setup:google-auth": "node scripts/setup-google-auth.mjs",
+    "setup:workspaces": "node scripts/setup-workspaces.mjs",
+    "test:workspaces": "vitest run"
   },
   "dependencies": {
     "@composio/core": "^0.22.0",
     "@composio/openai-agents": "^0.11.1",
+    "@convex-dev/better-auth": "^0.12.5",
     "@hugeicons/core-free-icons": "^1.0.0",
     "@hugeicons/react": "^1.0.0",
     "@huggingface/transformers": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@openai/agents": "^0.18.0",
+    "better-auth": "~1.6.15",
     "cheerio": "^1.2.0",
     "convex": "^1.36.1",
     "cors": "^2.8.5",
@@ -41,10 +46,12 @@
     "jose": "^6.2.12",
     "openai": "^7.27.0",
     "react-force-graph-2d": "^1.27.0",
+    "twilio": "^6.2.0",
     "ws": "^8.18.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
@@ -54,6 +61,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.5.12",
     "@vitejs/plugin-react": "^4.3.0",
+    "convex-test": "^0.0.63",
     "npm-run-all": "^4.1.5",
     "prompts": "^2.4.2",
     "react": "^19.0.0",
@@ -61,7 +69,8 @@
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^4.1.12"
   },
   "engines": {
     "node": ">=20"

@@ -1,3 +1,4 @@
+import { apiFetch } from "../lib/api-fetch";
 import { useCallback, useEffect, useState } from "react";
 import { useSocket } from "../lib/useSocket.js";
 
@@ -24,7 +25,7 @@ export function EmbeddingBanner({ isDark }: { isDark: boolean }) {
 
   const refresh = useCallback(async () => {
     try {
-      const r = await fetch("/api/memory/embedding-status");
+      const r = await apiFetch("/api/memory/embedding-status");
       if (!r.ok) throw new Error(`status ${r.status}`);
       const data = (await r.json()) as Status;
       setStatus(data);
@@ -72,7 +73,7 @@ export function EmbeddingBanner({ isDark }: { isDark: boolean }) {
     setErrorMsg(null);
     setProgress({ embedded: 0, failed: 0 });
     try {
-      const r = await fetch("/api/memory/reembed", { method: "POST" });
+      const r = await apiFetch("/api/memory/reembed", { method: "POST" });
       const data = await r.json();
       if (!r.ok || !data.ok) {
         setErrorMsg(data.error ?? `Re-embed failed (${r.status})`);

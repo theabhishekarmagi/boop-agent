@@ -1,3 +1,4 @@
+import { requireWorkspaceOwner } from "./model/auth";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -27,16 +28,18 @@ export const record = mutation({
     durationMs: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("usageRecords", { ...args, createdAt: Date.now() });
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.insert("usageRecords", { ownerId, ...args, createdAt: Date.now() });
   },
 });
 
 export const byConversation = query({
   args: { conversationId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     return await ctx.db
       .query("usageRecords")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_owner_conversation", (q) => q.eq("ownerId", ownerId).eq("conversationId", args.conversationId))
       .order("desc")
       .take(args.limit ?? 200);
   },
@@ -45,13 +48,15 @@ export const byConversation = query({
 export const recent = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    return await ctx.db.query("usageRecords").order("desc").take(args.limit ?? 100);
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.query("usageRecords").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(args.limit ?? 100);
   },
 });
 
 export const summary = query({
   args: { conversationId: v.optional(v.string()), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     // Cap the scan. Convex's hard .collect() ceiling is 16,384 docs; this
     // keeps the summary query from silently breaking once the append-only
     // log grows past that. Conversation-scoped queries use the index.
@@ -59,10 +64,10 @@ export const summary = query({
     const rows = args.conversationId
       ? await ctx.db
           .query("usageRecords")
-          .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId!))
+          .withIndex("by_owner_conversation", (q) => q.eq("ownerId", ownerId).eq("conversationId", args.conversationId!))
           .order("desc")
           .take(limit)
-      : await ctx.db.query("usageRecords").order("desc").take(limit);
+      : await ctx.db.query("usageRecords").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(limit);
     const bySource: Record<
       string,
       { costUsd: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; count: number }

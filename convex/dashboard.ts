@@ -1,3 +1,4 @@
+import { requireWorkspaceOwner } from "./model/auth";
 import { query } from "./_generated/server";
 
 // Cap per-table scans so a long-lived install doesn't hit Convex's 16,384
@@ -8,11 +9,12 @@ const METRICS_SCAN_LIMIT = 5000;
 export const metrics = query({
   args: {},
   handler: async (ctx) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
     const [messages, memories, agents, automationRuns] = await Promise.all([
-      ctx.db.query("messages").order("desc").take(METRICS_SCAN_LIMIT),
-      ctx.db.query("memoryRecords").order("desc").take(METRICS_SCAN_LIMIT),
-      ctx.db.query("executionAgents").order("desc").take(METRICS_SCAN_LIMIT),
-      ctx.db.query("automationRuns").order("desc").take(METRICS_SCAN_LIMIT),
+      ctx.db.query("messages").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(METRICS_SCAN_LIMIT),
+      ctx.db.query("memoryRecords").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(METRICS_SCAN_LIMIT),
+      ctx.db.query("executionAgents").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(METRICS_SCAN_LIMIT),
+      ctx.db.query("automationRuns").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(METRICS_SCAN_LIMIT),
     ]);
     const truncated =
       messages.length === METRICS_SCAN_LIMIT ||

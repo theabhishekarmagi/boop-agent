@@ -1,0 +1,29 @@
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: deploy/aws/Dockerfile
+      target: app
+    env_file: ./agent.env
+    environment:
+      BOOP_HOSTED_PREVIEW: "true"
+      BOOP_PUBLIC_MODE: "false"
+      BOOP_TELEGRAM_ENABLED: "true"
+      BOOP_EMBEDDING_CACHE: "/app/data/model-cache"
+    volumes:
+      - ./runtime-data:/app/data
+    restart: unless-stopped
+    init: true
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/aws/Dockerfile
+      target: web
+      args:
+        VITE_CONVEX_URL: https://compassionate-gnat-191.convex.cloud
+        VITE_CONVEX_SITE_URL: https://compassionate-gnat-191.convex.site
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - agent
+    restart: unless-stopped

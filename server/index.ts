@@ -17,8 +17,28 @@ import { ensureProactiveWatcher } from "./proactive-email.js";
 import { preloadLocalModel } from "./embeddings.js";
 import { createMemoryRouter } from "./memory-routes.js";
 import { startTelegramLoop } from "./telegram.js";
+import { startTwilioWhatsApp, twilioWhatsAppStatus } from "./twilio-whatsapp.js";
+import { convex } from "./convex-client.js";
+import { api } from "../convex/_generated/api.js";
+import { broadcast } from "./broadcast.js";
+import { OPERATOR_OWNER, runInWorkspace } from "./workspace-context.js";
+import { requireBrowserSession, verifyBrowserToken } from "./browser-auth.js";
 
 async function main() {
+  if (process.env.BOOP_PUBLIC_MODE === "true") {
+    throw new Error("This main-based branch is a personal agent. Use a separate personal development environment with BOOP_PUBLIC_MODE=false; the public multi-user flow lives on stagging.");
+  }
+  if (process.env.BOOP_HOSTED_PREVIEW === "true" &&
+      (!process.env.BOOP_ALLOWED_EMAILS?.trim() || !process.env.CONVEX_URL?.startsWith("https://"))) {
+    throw new Error("Hosted preview requires BOOP_ALLOWED_EMAILS and an HTTPS Convex deployment");
+  }
+  const whatsapp = await startTwilioWhatsApp({
+    generate: (conversationId, content) => handleUserMessage({ conversationId, content }),
+    record: async (conversationId, content) => {
+      await convex.mutation(api.messages.send, { conversationId, role: "assistant", content });
+      broadcast("whatsapp_reply", { conversationId });
+    },
+  });
   await loadIntegrations();
   startTelegramLoop();
   startCleanupLoop();
@@ -51,11 +71,17 @@ async function main() {
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, service: "boop-agent" });
+    res.json({ ok: true, service: "boop-agent", whatsapp: twilioWhatsAppStatus() });
   });
 
-  app.use("/sendblue", createSendblueRouter());
-  app.use("/composio", createComposioRouter());
+  const operatorContext: express.RequestHandler = (_req, _res, next) => runInWorkspace(OPERATOR_OWNER, next);
+  if (whatsapp) app.use("/twilio/whatsapp", operatorContext, whatsapp.router);
+  app.use("/sendblue", operatorContext, createSendblueRouter());
+  app.use("/composio", (req, res, next) => {
+    if (req.method === "POST" && req.path === "/webhook") operatorContext(req, res, next);
+    else void requireBrowserSession(req, res, next);
+  }, createComposioRouter());
+  app.use(requireBrowserSession);
   app.use("/memory", createMemoryRouter());
 
   app.post("/agents/:id/cancel", (req, res) => {
@@ -88,12 +114,14 @@ async function main() {
   // Chat endpoint for local testing and the debug dashboard
   app.post("/chat", async (req, res) => {
     const { conversationId, content } = req.body ?? {};
-    if (!conversationId || !content) {
-      res.status(400).json({ error: "conversationId and content required" });
+    if (typeof conversationId !== "string" || !conversationId.startsWith("web:") ||
+        conversationId.length > 200 || typeof content !== "string" || !content.trim() || content.length > 20000) {
+      res.status(400).json({ error: "A web: conversationId and message content are required" });
       return;
     }
     try {
       const reply = await handleUserMessage({ conversationId, content });
+      await convex.mutation(api.messages.send, { conversationId, role: "assistant", content: reply });
       res.json({ reply });
     } catch (err) {
       console.error(err);
@@ -102,10 +130,35 @@ async function main() {
   });
 
   const server = createServer(app);
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  // Tunnel only this small receiver, never the personal dashboard /chat APIs.
+  const webhookApp = express();
+  if (whatsapp) webhookApp.use("/twilio/whatsapp", operatorContext, whatsapp.router);
+  const webhookServer = whatsapp ? createServer(webhookApp) : undefined;
+  webhookServer?.listen(Number(process.env.TWILIO_WHATSAPP_WEBHOOK_PORT ?? 3457), "127.0.0.1", () => {
+    console.log(`[whatsapp] Webhook-only listener on 127.0.0.1:${process.env.TWILIO_WHATSAPP_WEBHOOK_PORT ?? 3457}`);
+  });
+  const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 20_000 });
   wss.on("connection", (ws) => {
-    addClient(ws);
-    ws.send(JSON.stringify({ event: "hello", data: { ok: true }, at: Date.now() }));
+    const timeout = setTimeout(() => ws.close(4401, "Sign in required"), 10_000);
+    let sessionCheck: ReturnType<typeof setInterval> | undefined;
+    ws.once("message", async (raw) => {
+      try {
+        const message = JSON.parse(raw.toString());
+        if (message.type !== "auth" || typeof message.token !== "string") throw new Error("Invalid auth");
+        const owner = await verifyBrowserToken(message.token);
+        if (ws.readyState !== 1) return;
+        clearTimeout(timeout);
+        addClient(ws, owner);
+        ws.send(JSON.stringify({ event: "hello", data: { ok: true }, at: Date.now() }));
+        sessionCheck = setInterval(() => {
+          void verifyBrowserToken(message.token).then(current => {
+            if (current !== owner) ws.close(4401, "Session changed");
+          }).catch(() => ws.close(4401, "Session expired"));
+        }, 30_000);
+        sessionCheck.unref();
+      } catch { ws.close(4401, "Sign in required"); }
+    });
+    ws.on("close", () => { clearTimeout(timeout); if (sessionCheck) clearInterval(sessionCheck); });
   });
 
   const port = Number(process.env.PORT ?? 3456);
@@ -116,9 +169,17 @@ async function main() {
     console.log(`  sendblue    POST http://localhost:${port}/sendblue/webhook`);
     console.log(`  websocket   WS   ws://localhost:${port}/ws`);
   });
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      server.close();
+      webhookServer?.close();
+      void whatsapp?.stop().finally(() => process.exit(0));
+      setTimeout(() => process.exit(0), 25_000).unref();
+    });
+  }
 }
 
-main().catch((err) => {
+runInWorkspace(OPERATOR_OWNER, main).catch((err) => {
   console.error("fatal", err);
   process.exit(1);
 });

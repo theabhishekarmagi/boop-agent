@@ -1,3 +1,4 @@
+import { apiFetch } from "../lib/api-fetch";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { IntegrationLogo } from "../lib/branding.js";
 
@@ -209,6 +210,7 @@ function IntroCard({ isDark, onDismiss }: { isDark: boolean; onDismiss: () => vo
 export function ComposioSection({ isDark }: { isDark: boolean }) {
   const [data, setData] = useState<ToolkitsResponse | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const query = search.trim();
   const [catalog, setCatalog] = useState<(ToolkitsResponse & { query: string }) | null>(null);
@@ -267,12 +269,14 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
   );
 
   const fetchToolkits = useCallback(async () => {
+    setLoadError(null);
     try {
-      const r = await fetch("/api/composio/toolkits");
+      const r = await apiFetch("/api/composio/toolkits");
+      if (!r.ok) throw new Error(r.status === 401 ? "Please sign in again to load connections." : "Unable to load connections. Please try again.");
       const json = (await r.json()) as ToolkitsResponse;
       setData(json);
     } catch {
-      setData({ enabled: false, toolkits: [] });
+      setLoadError("Unable to load connections. Check your connection or sign in again, then retry.");
     } finally {
       setLoaded(true);
     }
@@ -295,7 +299,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
       try {
         const params = new URLSearchParams({ search: query });
         if (catalogCursor) params.set("cursor", catalogCursor);
-        const response = await fetch(`/api/composio/toolkits?${params}`, { signal: controller.signal });
+        const response = await apiFetch(`/api/composio/toolkits?${params}`, { signal: controller.signal });
         if (!response.ok) throw new Error("Couldn't search Composio. Try again.");
         const page = await response.json() as ToolkitsResponse;
         if (controller.signal.aborted) return;
@@ -323,7 +327,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
       setBusy(slug);
       setNeedsAuthConfig(null);
       try {
-        const r = await fetch(`/api/composio/toolkits/${slug}/authorize`, { method: "POST" });
+        const r = await apiFetch(`/api/composio/toolkits/${slug}/authorize`, { method: "POST" });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
           if (err?.needsAuthConfig) {
@@ -363,7 +367,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
               authPollRef.current = null;
             }
             try {
-              await fetch("/api/composio/refresh", { method: "POST" });
+              await apiFetch("/api/composio/refresh", { method: "POST" });
             } catch {
               /* ignore */
             }
@@ -383,7 +387,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
     async (slug: string, connectionId: string) => {
       setBusy(`${slug}:${connectionId}`);
       try {
-        const r = await fetch(`/api/composio/toolkits/${slug}/disconnect`, {
+        const r = await apiFetch(`/api/composio/toolkits/${slug}/disconnect`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ connectionId }),
@@ -406,7 +410,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
   const rename = useCallback(
     async (connectionId: string, alias: string): Promise<boolean> => {
       try {
-        const r = await fetch(`/api/composio/connections/${connectionId}/rename`, {
+        const r = await apiFetch(`/api/composio/connections/${connectionId}/rename`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ alias }),
@@ -434,7 +438,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
       if (toolsBySlug[slug] && toolsBySlug[slug] !== "error") return;
       setToolsBySlug((prev) => ({ ...prev, [slug]: "loading" }));
       try {
-        const r = await fetch(`/api/composio/toolkits/${slug}/tools`);
+        const r = await apiFetch(`/api/composio/toolkits/${slug}/tools`);
         if (!r.ok) throw new Error(r.statusText);
         const json = (await r.json()) as { tools: ToolSummary[] };
         setToolsBySlug((prev) => ({ ...prev, [slug]: json.tools }));
@@ -461,6 +465,13 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
       />
 
       {showIntro && data?.enabled !== false && <IntroCard isDark={isDark} onDismiss={dismissIntro} />}
+
+      {loadError && (
+        <div role="alert" className={`rounded-xl border px-4 py-4 mb-4 text-sm ${cardBg}`}>
+          {loadError}
+          <button className="ml-3 underline" onClick={() => void fetchToolkits()}>Retry</button>
+        </div>
+      )}
 
       {needsAuthConfig && (
         <div
@@ -746,8 +757,8 @@ function ToolkitCard({
       {hasConnections && (
         <div className="mt-3 space-y-1.5">
           {t.connections.map((c, i) => (
+            <div key={c.id}>
             <ConnectionRow
-              key={c.id}
               slug={t.slug}
               conn={c}
               index={i}
@@ -757,6 +768,8 @@ function ToolkitCard({
               onDisconnect={onDisconnect}
               onRename={onRename}
             />
+            {t.slug === "telegram" && c.status === "ACTIVE" && <TelegramChat connectionId={c.id} />}
+            </div>
           ))}
           <button
             onClick={() => onConnect(t.slug)}
@@ -775,6 +788,57 @@ function ToolkitCard({
       {expanded && <ToolList tools={tools} isDark={isDark} muted={muted} />}
     </div>
   );
+}
+
+function TelegramChat({ connectionId }: { connectionId: string }) {
+  const [verified, setVerified] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    let stopped = false;
+    const check = async () => {
+      try {
+        const response = await apiFetch(`/api/composio/connections/${encodeURIComponent(connectionId)}/telegram-chat`);
+        if (!response.ok) return;
+        const result = await response.json();
+        if (!stopped) setVerified(result.verified === true);
+      } catch { /* The action below offers a retry. */ }
+    };
+    void check();
+    const timer = setInterval(() => void check(), 5000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [connectionId]);
+  const begin = async () => {
+    setBusy(true); setError(null); setUrl(null);
+    try {
+      const response = await apiFetch(`/api/composio/connections/${encodeURIComponent(connectionId)}/telegram-chat`, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      setUrl(result.url);
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to start Telegram chat."); }
+    finally { setBusy(false); }
+  };
+  return <div className="px-2.5 py-3 text-xs space-y-2">
+    {verified ? <p role="status" className="text-emerald-500">Telegram chat verified. Message this bot to talk to your own Boop agent.</p>
+      : <>
+        <p>Verify your Telegram chat to receive replies from your Boop agent.</p>
+        <button onClick={() => void begin()} disabled={busy} className="text-sky-500 underline disabled:opacity-50">
+          {busy ? "Preparing…" : url ? "Generate a new chat link" : "Chat with Boop"}
+        </button>
+        {url && <div className="space-y-2"><a href={url} target="_blank" rel="noreferrer" className="text-sky-500 underline">Open @{new URL(url).pathname.slice(1)} in Telegram and press Start</a>
+          <p>This private verification link expires in 10 minutes. Boop will send a greeting after verification.</p>
+          <p>Using Telegram Web? Copy this command and send it to @{new URL(url).pathname.slice(1)}:</p>
+          <code className="block break-all select-all rounded border p-2">/start {new URL(url).searchParams.get("start")}</code>
+          <button className="text-sky-500 underline" onClick={async () => {
+            try { await navigator.clipboard.writeText(`/start ${new URL(url).searchParams.get("start")}`); setCopied(true); }
+            catch { setError("Select and copy the command above, then paste it into Telegram."); }
+          }}>{copied ? "Command copied" : "Copy verification command"}</button>
+        </div>}
+      </>}
+    {error && <p role="alert" className="text-rose-500">{error}</p>}
+  </div>;
 }
 
 function ConnectionRow({
