@@ -25,7 +25,8 @@
     "smoke:openai": "tsx scripts/smoke-openai.ts",
     "setup:google-auth": "node scripts/setup-google-auth.mjs",
     "setup:workspaces": "node scripts/setup-workspaces.mjs",
-    "test:workspaces": "vitest run"
+    "test:workspaces": "vitest run",
+    "test:laya": "node scripts/test-laya.mjs"
   },
   "dependencies": {
     "@composio/core": "^0.22.0",

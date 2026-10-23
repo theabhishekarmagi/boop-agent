@@ -1,0 +1,19 @@
+{
+  "route": {
+    "type": "choice",
+    "instructions": "Which capability should handle this user's request? Choose based on the requested task.",
+    "criteria": {
+      "email": "Find, read, summarize, draft, or send emails",
+      "calendar": "Read, create, change, or cancel calendar events",
+      "research": "Search the web for facts, news, comparisons, or recommendations",
+      "memory": "Remember or recall the user's personal preferences or facts",
+      "automation": "Schedule recurring tasks, reminders, or manage automations",
+      "conversation": "Greetings, thanks, or casual conversation without a task",
+      "other": "Unclear requests needing clarification or account and app configuration"
+    }
+  },
+  "external_write": {
+    "type": "noul",
+    "instructions": "Does the user explicitly request sending a message or creating, changing, or deleting an external record such as a calendar event? Reading, searching, summarizing, remembering, scheduling a Boop reminder, and preparing an unsent draft do not count."
+  }
+}

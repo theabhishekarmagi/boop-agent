@@ -1,0 +1,1080 @@
+{
+  "settings": {
+    "model": "multilingual",
+    "device": "cpu",
+    "threads": 2,
+    "repeats": 3,
+    "revision": "7b928d828b7b0e022f929d9bd2e44165aa270148",
+    "output": null
+  },
+  "hardware": {
+    "system": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpu_count": 10,
+    "processor": "arm",
+    "ram_gib": 16.0
+  },
+  "versions": {
+    "laya": "0.4.13",
+    "torch": "2.14.1",
+    "transformers": "5.20.2",
+    "psutil": "7.2.2"
+  },
+  "dataset_sha256": "cfcc75bd9f3e78756bd8834bbf2f97f90a4b3d029d4449b1ddda4d5fea7367b6",
+  "questions_sha256": "2bc7c807fce80b1f9cf5560c5d99681e912888ab4577aa478b0d74b92f980487",
+  "summary": {
+    "route_majority_baseline": 0.16666666666666666,
+    "write_majority_baseline": 0.9166666666666666,
+    "write_confusion": {
+      "tp": 0,
+      "fn": 3,
+      "fp": 2,
+      "tn": 31
+    },
+    "write_recall": 0.0,
+    "cases": 36,
+    "route_accuracy": 0.6666666666666666,
+    "write_accuracy": 0.8611111111111112,
+    "repeat_consistent": true,
+    "warm_median_ms": 163.13049950258574,
+    "warm_p95_ms": 193.1941660004668,
+    "load_seconds_including_cache_or_download": 39.701652042000205,
+    "first_inference_ms": 235.03004200028954,
+    "baseline_rss_mib": 195.125,
+    "observed_peak_rss_mib": 1484.765625,
+    "incremental_observed_rss_mib": 1289.640625,
+    "high_confidence_0_8": {
+      "coverage": 0.5277777777777778,
+      "count": 19,
+      "route_accuracy": 0.8947368421052632
+    },
+    "by_language": {
+      "en": {
+        "cases": 28,
+        "route_accuracy": 0.6785714285714286
+      },
+      "hi": {
+        "cases": 4,
+        "route_accuracy": 0.75
+      },
+      "te": {
+        "cases": 4,
+        "route_accuracy": 0.5
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "en-01",
+      "language": "en",
+      "text": "Summarize my unread emails from today.",
+      "route": "email",
+      "external_write": false,
+      "predicted_route": "automation",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.765,
+      "write_probability": 0.2399,
+      "repeat_consistent": true,
+      "latency_ms": [
+        134.83458300470375,
+        132.9308749991469,
+        145.74920800077962
+      ],
+      "usage": {
+        "input_tokens": 209,
+        "output_tokens": 0,
+        "state_tokens": 8,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-02",
+      "language": "en",
+      "text": "Find the invoice email from Acme.",
+      "route": "email",
+      "external_write": false,
+      "predicted_route": "email",
+      "route_correct": true,
+      "predicted_external_write": true,
+      "write_correct": false,
+      "route_answer_confidence": 1.0,
+      "write_probability": 0.7559,
+      "repeat_consistent": true,
+      "latency_ms": [
+        150.2882499989937,
+        168.50891699868953,
+        171.12020799686434
+      ],
+      "usage": {
+        "input_tokens": 207,
+        "output_tokens": 0,
+        "state_tokens": 7,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-03",
+      "language": "en",
+      "text": "Draft a reply saying I will attend, but do not send it.",
+      "route": "email",
+      "external_write": false,
+      "predicted_route": "conversation",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.3387,
+      "write_probability": 0.3131,
+      "repeat_consistent": true,
+      "latency_ms": [
+        180.0767920067301,
+        186.29874999896856,
+        158.6884169955738
+      ],
+      "usage": {
+        "input_tokens": 221,
+        "output_tokens": 0,
+        "state_tokens": 14,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-04",
+      "language": "en",
+      "text": "Send Alex an email saying the report is ready.",
+      "route": "email",
+      "external_write": true,
+      "predicted_route": "email",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": false,
+      "route_answer_confidence": 0.9469,
+      "write_probability": 0.294,
+      "repeat_consistent": true,
+      "latency_ms": [
+        175.127333997807,
+        169.0682080006809,
+        151.5546250011539
+      ],
+      "usage": {
+        "input_tokens": 213,
+        "output_tokens": 0,
+        "state_tokens": 10,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-05",
+      "language": "en",
+      "text": "What meetings do I have tomorrow?",
+      "route": "calendar",
+      "external_write": false,
+      "predicted_route": "calendar",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9949,
+      "write_probability": 0.0332,
+      "repeat_consistent": true,
+      "latency_ms": [
+        146.97929200337967,
+        146.856541003217,
+        161.89741699781734
+      ],
+      "usage": {
+        "input_tokens": 207,
+        "output_tokens": 0,
+        "state_tokens": 7,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-06",
+      "language": "en",
+      "text": "Find a free hour on my calendar this Friday.",
+      "route": "calendar",
+      "external_write": false,
+      "predicted_route": "calendar",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9865,
+      "write_probability": 0.2705,
+      "repeat_consistent": true,
+      "latency_ms": [
+        161.75199999997858,
+        185.60349999461323,
+        177.77258299611276
+      ],
+      "usage": {
+        "input_tokens": 213,
+        "output_tokens": 0,
+        "state_tokens": 10,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-07",
+      "language": "en",
+      "text": "Create a meeting with Sam tomorrow at 3 pm.",
+      "route": "calendar",
+      "external_write": true,
+      "predicted_route": "calendar",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": false,
+      "route_answer_confidence": 0.5123,
+      "write_probability": 0.0469,
+      "repeat_consistent": true,
+      "latency_ms": [
+        151.42995900532696,
+        159.36470899760025,
+        158.43104099621996
+      ],
+      "usage": {
+        "input_tokens": 215,
+        "output_tokens": 0,
+        "state_tokens": 11,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-08",
+      "language": "en",
+      "text": "Cancel my dentist appointment on Monday.",
+      "route": "calendar",
+      "external_write": true,
+      "predicted_route": "calendar",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": false,
+      "route_answer_confidence": 0.996,
+      "write_probability": 0.0232,
+      "repeat_consistent": true,
+      "latency_ms": [
+        147.84441699885065,
+        170.85466600110522,
+        149.9280420030118
+      ],
+      "usage": {
+        "input_tokens": 207,
+        "output_tokens": 0,
+        "state_tokens": 7,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-09",
+      "language": "en",
+      "text": "Search for the latest news about electric vehicles.",
+      "route": "research",
+      "external_write": false,
+      "predicted_route": "research",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9765,
+      "write_probability": 0.0987,
+      "repeat_consistent": true,
+      "latency_ms": [
+        147.82712500164052,
+        152.29737499612384,
+        155.18370799691183
+      ],
+      "usage": {
+        "input_tokens": 211,
+        "output_tokens": 0,
+        "state_tokens": 9,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-10",
+      "language": "en",
+      "text": "Compare current prices of cloud hosting providers.",
+      "route": "research",
+      "external_write": false,
+      "predicted_route": "automation",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.5234,
+      "write_probability": 0.0352,
+      "repeat_consistent": true,
+      "latency_ms": [
+        148.9521670009708,
+        146.9373750005616,
+        170.37754200282507
+      ],
+      "usage": {
+        "input_tokens": 209,
+        "output_tokens": 0,
+        "state_tokens": 8,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-11",
+      "language": "en",
+      "text": "Find the official documentation for the WhatsApp API.",
+      "route": "research",
+      "external_write": false,
+      "predicted_route": "email",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.5091,
+      "write_probability": 0.0099,
+      "repeat_consistent": true,
+      "latency_ms": [
+        163.83566599688493,
+        168.2164579979144,
+        164.2427919941838
+      ],
+      "usage": {
+        "input_tokens": 211,
+        "output_tokens": 0,
+        "state_tokens": 9,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-12",
+      "language": "en",
+      "text": "What is the weather forecast for Hyderabad tomorrow?",
+      "route": "research",
+      "external_write": false,
+      "predicted_route": "research",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.5396,
+      "write_probability": 0.0124,
+      "repeat_consistent": true,
+      "latency_ms": [
+        155.1351660018554,
+        167.49650000565453,
+        159.16829199704807
+      ],
+      "usage": {
+        "input_tokens": 211,
+        "output_tokens": 0,
+        "state_tokens": 9,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-13",
+      "language": "en",
+      "text": "Remember that I prefer vegetarian meals.",
+      "route": "memory",
+      "external_write": false,
+      "predicted_route": "memory",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9902,
+      "write_probability": 0.0634,
+      "repeat_consistent": true,
+      "latency_ms": [
+        148.3811660000356,
+        147.50429099512985,
+        152.9246249992866
+      ],
+      "usage": {
+        "input_tokens": 207,
+        "output_tokens": 0,
+        "state_tokens": 7,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-14",
+      "language": "en",
+      "text": "What is my preferred timezone?",
+      "route": "memory",
+      "external_write": false,
+      "predicted_route": "other",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.4585,
+      "write_probability": 0.0274,
+      "repeat_consistent": true,
+      "latency_ms": [
+        150.27312500023982,
+        146.13458299572812,
+        181.1237079964485
+      ],
+      "usage": {
+        "input_tokens": 205,
+        "output_tokens": 0,
+        "state_tokens": 6,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-15",
+      "language": "en",
+      "text": "Remember my dog is named Milo.",
+      "route": "memory",
+      "external_write": false,
+      "predicted_route": "memory",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9996,
+      "write_probability": 0.0931,
+      "repeat_consistent": true,
+      "latency_ms": [
+        151.0997919976944,
+        163.63216700119665,
+        164.24025000014808
+      ],
+      "usage": {
+        "input_tokens": 207,
+        "output_tokens": 0,
+        "state_tokens": 7,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-16",
+      "language": "en",
+      "text": "What did I tell you my favorite color was?",
+      "route": "memory",
+      "external_write": false,
+      "predicted_route": "memory",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.6611,
+      "write_probability": 0.0528,
+      "repeat_consistent": true,
+      "latency_ms": [
+        153.4843749977881,
+        160.23216699977638,
+        160.40541700203903
+      ],
+      "usage": {
+        "input_tokens": 213,
+        "output_tokens": 0,
+        "state_tokens": 10,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-17",
+      "language": "en",
+      "text": "Remind me every morning at 9 to drink water.",
+      "route": "automation",
+      "external_write": false,
+      "predicted_route": "memory",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9672,
+      "write_probability": 0.1686,
+      "repeat_consistent": true,
+      "latency_ms": [
+        173.9661250030622,
+        168.43429100117646,
+        167.78679200069746
+      ],
+      "usage": {
+        "input_tokens": 215,
+        "output_tokens": 0,
+        "state_tokens": 11,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-18",
+      "language": "en",
+      "text": "List my active recurring tasks.",
+      "route": "automation",
+      "external_write": false,
+      "predicted_route": "automation",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9894,
+      "write_probability": 0.3345,
+      "repeat_consistent": true,
+      "latency_ms": [
+        150.212125001417,
+        152.54941600142047,
+        148.8349580031354
+      ],
+      "usage": {
+        "input_tokens": 205,
+        "output_tokens": 0,
+        "state_tokens": 6,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-19",
+      "language": "en",
+      "text": "Disable my daily news reminder.",
+      "route": "automation",
+      "external_write": false,
+      "predicted_route": "automation",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.8146,
+      "write_probability": 0.4321,
+      "repeat_consistent": true,
+      "latency_ms": [
+        171.05404199537588,
+        174.88254199997755,
+        166.272750000644
+      ],
+      "usage": {
+        "input_tokens": 205,
+        "output_tokens": 0,
+        "state_tokens": 6,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-20",
+      "language": "en",
+      "text": "Every Friday, summarize my unread emails.",
+      "route": "automation",
+      "external_write": false,
+      "predicted_route": "email",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.675,
+      "write_probability": 0.15,
+      "repeat_consistent": true,
+      "latency_ms": [
+        164.21824999997625,
+        157.02895800495753,
+        148.7160840042634
+      ],
+      "usage": {
+        "input_tokens": 209,
+        "output_tokens": 0,
+        "state_tokens": 8,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-21",
+      "language": "en",
+      "text": "Hi Boop!",
+      "route": "conversation",
+      "external_write": false,
+      "predicted_route": "conversation",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9096,
+      "write_probability": 0.2154,
+      "repeat_consistent": true,
+      "latency_ms": [
+        169.66312500153435,
+        148.00554099929286,
+        154.44799999386305
+      ],
+      "usage": {
+        "input_tokens": 201,
+        "output_tokens": 0,
+        "state_tokens": 4,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-22",
+      "language": "en",
+      "text": "Thank you, that helped.",
+      "route": "conversation",
+      "external_write": false,
+      "predicted_route": "conversation",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9993,
+      "write_probability": 0.0911,
+      "repeat_consistent": true,
+      "latency_ms": [
+        147.42604200000642,
+        157.50312500313157,
+        152.13395900354953
+      ],
+      "usage": {
+        "input_tokens": 205,
+        "output_tokens": 0,
+        "state_tokens": 6,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-23",
+      "language": "en",
+      "text": "Good morning! How are you?",
+      "route": "conversation",
+      "external_write": false,
+      "predicted_route": "conversation",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9809,
+      "write_probability": 0.0509,
+      "repeat_consistent": true,
+      "latency_ms": [
+        158.1457499996759,
+        146.11620800133096,
+        146.4637919998495
+      ],
+      "usage": {
+        "input_tokens": 207,
+        "output_tokens": 0,
+        "state_tokens": 7,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-24",
+      "language": "en",
+      "text": "Haha, nice one!",
+      "route": "conversation",
+      "external_write": false,
+      "predicted_route": "conversation",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.925,
+      "write_probability": 0.1121,
+      "repeat_consistent": true,
+      "latency_ms": [
+        175.0655830037431,
+        149.87391600152478,
+        143.51308299956145
+      ],
+      "usage": {
+        "input_tokens": 203,
+        "output_tokens": 0,
+        "state_tokens": 5,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-25",
+      "language": "en",
+      "text": "Connect my Slack account.",
+      "route": "other",
+      "external_write": false,
+      "predicted_route": "automation",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.6951,
+      "write_probability": 0.0803,
+      "repeat_consistent": true,
+      "latency_ms": [
+        146.61608299502404,
+        147.2290419987985,
+        159.10683300171513
+      ],
+      "usage": {
+        "input_tokens": 203,
+        "output_tokens": 0,
+        "state_tokens": 5,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-26",
+      "language": "en",
+      "text": "Switch the model used by my agent.",
+      "route": "other",
+      "external_write": false,
+      "predicted_route": "automation",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.6114,
+      "write_probability": 0.0843,
+      "repeat_consistent": true,
+      "latency_ms": [
+        152.87350000289734,
+        192.5397079976392,
+        164.25945800438058
+      ],
+      "usage": {
+        "input_tokens": 209,
+        "output_tokens": 0,
+        "state_tokens": 8,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-27",
+      "language": "en",
+      "text": "Do it.",
+      "route": "other",
+      "external_write": false,
+      "predicted_route": "other",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.3547,
+      "write_probability": 0.1164,
+      "repeat_consistent": true,
+      "latency_ms": [
+        152.95299999706913,
+        167.369165996206,
+        179.20583299564896
+      ],
+      "usage": {
+        "input_tokens": 199,
+        "output_tokens": 0,
+        "state_tokens": 3,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "en-28",
+      "language": "en",
+      "text": "Help me with that thing.",
+      "route": "other",
+      "external_write": false,
+      "predicted_route": "other",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.3763,
+      "write_probability": 0.0907,
+      "repeat_consistent": true,
+      "latency_ms": [
+        157.47666700190166,
+        163.33616599877132,
+        171.02950000116834
+      ],
+      "usage": {
+        "input_tokens": 205,
+        "output_tokens": 0,
+        "state_tokens": 6,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "hi-01",
+      "language": "hi",
+      "text": "आज के मेरे अपठित ईमेल का सारांश बताओ।",
+      "route": "email",
+      "external_write": false,
+      "predicted_route": "email",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 1.0,
+      "write_probability": 0.1735,
+      "repeat_consistent": true,
+      "latency_ms": [
+        166.2387500036857,
+        177.3004580027191,
+        163.44549999485025
+      ],
+      "usage": {
+        "input_tokens": 225,
+        "output_tokens": 0,
+        "state_tokens": 16,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "hi-02",
+      "language": "hi",
+      "text": "कल मेरे कैलेंडर में कौन सी मीटिंग हैं?",
+      "route": "calendar",
+      "external_write": false,
+      "predicted_route": "calendar",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.4407,
+      "write_probability": 0.0919,
+      "repeat_consistent": true,
+      "latency_ms": [
+        166.1414589980268,
+        179.18145799922058,
+        188.54533299600007
+      ],
+      "usage": {
+        "input_tokens": 225,
+        "output_tokens": 0,
+        "state_tokens": 16,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "hi-03",
+      "language": "hi",
+      "text": "याद रखना कि मुझे शाकाहारी खाना पसंद है।",
+      "route": "memory",
+      "external_write": false,
+      "predicted_route": "memory",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9549,
+      "write_probability": 0.472,
+      "repeat_consistent": true,
+      "latency_ms": [
+        165.72033400007058,
+        162.92483300640015,
+        172.03399999561952
+      ],
+      "usage": {
+        "input_tokens": 225,
+        "output_tokens": 0,
+        "state_tokens": 16,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "hi-04",
+      "language": "hi",
+      "text": "मुझे रोज सुबह नौ बजे पानी पीने की याद दिलाना।",
+      "route": "automation",
+      "external_write": false,
+      "predicted_route": "memory",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.9715,
+      "write_probability": 0.3497,
+      "repeat_consistent": true,
+      "latency_ms": [
+        192.62754199735355,
+        164.98616600438254,
+        158.04345899960026
+      ],
+      "usage": {
+        "input_tokens": 229,
+        "output_tokens": 0,
+        "state_tokens": 18,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "te-01",
+      "language": "te",
+      "text": "ఈ రోజు వచ్చిన నా ఇమెయిళ్ల సారాంశం చెప్పు.",
+      "route": "email",
+      "external_write": false,
+      "predicted_route": "calendar",
+      "route_correct": false,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.337,
+      "write_probability": 0.1447,
+      "repeat_consistent": true,
+      "latency_ms": [
+        184.05741700553335,
+        229.00479100644588,
+        193.1941660004668
+      ],
+      "usage": {
+        "input_tokens": 249,
+        "output_tokens": 0,
+        "state_tokens": 28,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "te-02",
+      "language": "te",
+      "text": "రేపు నా క్యాలెండర్లో ఏ సమావేశాలు ఉన్నాయి?",
+      "route": "calendar",
+      "external_write": false,
+      "predicted_route": "calendar",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.896,
+      "write_probability": 0.0176,
+      "repeat_consistent": true,
+      "latency_ms": [
+        165.63370800577104,
+        179.3784580004285,
+        197.82545899943216
+      ],
+      "usage": {
+        "input_tokens": 235,
+        "output_tokens": 0,
+        "state_tokens": 21,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "te-03",
+      "language": "te",
+      "text": "నాకు శాఖాహారం ఇష్టమని గుర్తుంచుకో.",
+      "route": "memory",
+      "external_write": false,
+      "predicted_route": "memory",
+      "route_correct": true,
+      "predicted_external_write": false,
+      "write_correct": true,
+      "route_answer_confidence": 0.7058,
+      "write_probability": 0.0215,
+      "repeat_consistent": true,
+      "latency_ms": [
+        183.7505000003148,
+        191.859917002148,
+        188.6639589938568
+      ],
+      "usage": {
+        "input_tokens": 239,
+        "output_tokens": 0,
+        "state_tokens": 23,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "id": "te-04",
+      "language": "te",
+      "text": "ప్రతి రోజు ఉదయం తొమ్మిదికి నీళ్లు తాగమని గుర్తు చేయి.",
+      "route": "automation",
+      "external_write": false,
+      "predicted_route": "memory",
+      "route_correct": false,
+      "predicted_external_write": true,
+      "write_correct": false,
+      "route_answer_confidence": 0.6307,
+      "write_probability": 0.5549,
+      "repeat_consistent": true,
+      "latency_ms": [
+        205.5547909985762,
+        206.31525000499096,
+        197.62462499784306
+      ],
+      "usage": {
+        "input_tokens": 257,
+        "output_tokens": 0,
+        "state_tokens": 32,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    }
+  ],
+  "long_input_probes": [
+    {
+      "request_position": "head",
+      "expected_route": "email",
+      "predicted_route": "other",
+      "usage": {
+        "input_tokens": 2048,
+        "output_tokens": 0,
+        "state_tokens": 2109,
+        "state_tokens_dropped": 1204,
+        "truncated": true,
+        "truncated_questions": [
+          "route",
+          "external_write"
+        ]
+      }
+    },
+    {
+      "request_position": "tail",
+      "expected_route": "email",
+      "predicted_route": "other",
+      "usage": {
+        "input_tokens": 2048,
+        "output_tokens": 0,
+        "state_tokens": 2109,
+        "state_tokens_dropped": 1204,
+        "truncated": true,
+        "truncated_questions": [
+          "route",
+          "external_write"
+        ]
+      }
+    }
+  ],
+  "limitations": [
+    "Small synthetic exploratory dataset, not production accuracy or calibrated confidence.",
+    "Mac results do not predict latency or total RAM use on AWS.",
+    "Observed RSS samples can miss transient peaks; MPS memory reported separately.",
+    "The external_write question is a diagnostic, never an authorization mechanism."
+  ]
+}
