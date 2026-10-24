@@ -16,7 +16,11 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     appName: "Boop",
     baseURL: process.env.CONVEX_SITE_URL,
     secret: process.env.BETTER_AUTH_SECRET,
-    trustedOrigins: [siteUrl],
+    // A cloud development backend may serve both the hosted preview and a
+    // local frontend. Keep the primary callback site and allow only explicitly
+    // configured additional origins for CORS and redirect validation.
+    trustedOrigins: [siteUrl, ...(process.env.ADDITIONAL_AUTH_TRUSTED_ORIGINS ?? "")
+      .split(",").map((origin) => origin.trim()).filter(Boolean)],
     database: authComponent.adapter(ctx),
     socialProviders: {
       google: {

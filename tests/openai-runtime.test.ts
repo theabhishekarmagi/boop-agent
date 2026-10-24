@@ -101,3 +101,68 @@ test("long tasks retain the original uncapped model-turn behavior", async () => 
   await collect(model, { toolGroups: { work: tools } });
   assert.equal(model.calls.length, 13); model.assertComplete();
 });
+
+test("oversized provider results are bounded and details can be read without repeating the action", async () => {
+  let executions = 0;
+  const payload = "a".repeat(90000) + "NEEDED-DETAIL";
+  const group = createToolGroup({ name: "provider", tools: [tool("fetch", "Fetch", {}, async () => {
+    executions++;
+    return { content: [{ type: "text", text: payload }] };
+  })] });
+  const model = new ScriptedModel([
+    [functionCall("mcp__provider__fetch", {}, { callId: "big_result", namespace: "provider" })],
+    [functionCall("read_tool_result", { call_id: "big_result", offset: 0, query: "NEEDED-DETAIL" }, { callId: "read_page" })],
+    [assistantMessage("Found the requested detail.")],
+  ]);
+  await collect(model, { toolGroups: { provider: group } });
+  const next = model.calls[1].request.input;
+  assert(Array.isArray(next));
+  const shortened = next.find(item => item.type === "function_call_result" && item.callId === "big_result");
+  assert(shortened?.type === "function_call_result");
+  const preview = JSON.stringify(shortened.output);
+  assert(preview.length < 17000);
+  assert.match(preview, /SHORTENED/);
+  const final = model.calls[2].request.input;
+  assert(Array.isArray(final));
+  const recovered = final.find(item => item.type === "function_call_result" && item.callId === "read_page");
+  assert(recovered?.type === "function_call_result");
+  assert.match(JSON.stringify(recovered.output), /NEEDED-DETAIL/);
+  assert.equal(executions, 1);
+  model.assertComplete();
+});
+
+test("long tool histories shrink old outputs while preserving calls, pairs, and run isolation", async () => {
+  const group = createToolGroup({ name: "provider", tools: [tool("fetch", "Fetch", {}, async () => ({ content: [{ type: "text", text: "z".repeat(40000) }] }))] });
+  const model = new ScriptedModel([
+    ...Array.from({ length: 8 }, (_, n) => [functionCall("mcp__provider__fetch", {}, { callId: `result_${n}`, namespace: "provider" })]),
+    [assistantMessage("Done")],
+  ]);
+  await collect(model, { toolGroups: { provider: group } });
+  const final = model.calls[8].request.input;
+  assert(Array.isArray(final));
+  const outputs = final.filter(item => item.type === "function_call_result");
+  assert.equal(outputs.length, 8);
+  assert.equal(final.filter(item => item.type === "function_call").length, 8);
+  assert(JSON.stringify(outputs[0]).length < 2000);
+  assert(JSON.stringify(outputs).length < 65000);
+  const stranger = new ScriptedModel([
+    [functionCall("read_tool_result", { call_id: "result_0", offset: 0, query: null }, { callId: "other_run" })],
+    [assistantMessage("Unavailable")],
+  ]);
+  await collect(stranger);
+  assert.match(JSON.stringify(stranger.calls[1].request.input), /Unknown result/);
+});
+
+test("a mistaken semantic search returns a usable result page with literal-search guidance", async () => {
+  const payload = "Relevant email content. ".repeat(2000);
+  const group = createToolGroup({name:"provider", tools:[tool("fetch","Fetch",{},async()=>({content:[{type:"text",text:payload}]}))]});
+  const model = new ScriptedModel([
+    [functionCall("mcp__provider__fetch",{}, {callId:"large", namespace:"provider"})],
+    [functionCall("read_tool_result",{call_id:"large",offset:0,query:"Please return all important email contents"},{callId:"read"})],
+    [assistantMessage("Read the result without running remote Python.")],
+  ]);
+  await collect(model,{toolGroups:{provider:group}});
+  const history = JSON.stringify(model.calls[2].request.input);
+  assert.match(history,/Relevant email content/); assert.match(history,/No exact literal match/);
+  assert.match(history,/not a semantic search/); model.assertComplete();
+});

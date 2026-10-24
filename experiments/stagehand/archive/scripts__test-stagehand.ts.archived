@@ -1,0 +1,66 @@
+import "../server/env-setup.js";
+import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
+import { load } from "cheerio";
+import { LocalResearchBrowser, launchLocalBrowser, type BrowserConfig } from "../server/stagehand-browser.js";
+import { OPERATOR_OWNER, runInWorkspace } from "../server/workspace-context.js";
+import { startBrowserFixture } from "./stagehand-fixture.js";
+
+async function main() {
+  const fixture = await startBrowserFixture();
+  const config: BrowserConfig = { origins: [fixture.origin], headless: true, idleMs: 60_000, maxPages: 4,
+    executablePath: process.env.BOOP_STAGEHAND_EXECUTABLE_PATH };
+  const samples: Array<Record<string, unknown>> = [];
+  try {
+    for (let n = 0; n < 3; n++) await runInWorkspace(OPERATOR_OWNER, async () => {
+      const session = new LocalResearchBrowser(config, undefined, launchLocalBrowser, fixture.validate);
+      try {
+        const fetchStart = performance.now();
+        const html = await fetch(fixture.origin).then(r => r.text());
+        const $ = load(html); $("script,style").remove(); const fetched = $("body").text();
+        const fetchMs = performance.now() - fetchStart;
+        assert(fetched.includes("notebook")); assert(!fetched.includes(fixture.secret));
+        let start = performance.now(); const first = await session.open(fixture.origin); const coldMs = performance.now() - start;
+        start = performance.now(); let snapshot = await session.read(first.tab);
+        // Page readiness is checked explicitly, not an unbounded sleep or a repeated navigation.
+        for (let tries = 0; !snapshot.content.includes(fixture.secret) && tries < 5; tries++) snapshot = await session.read(first.tab);
+        assert(snapshot.content.includes(fixture.secret), "Browser must read the JavaScript-rendered secret");
+        const warmReadMs = performance.now() - start;
+        const link = snapshot.content.match(/\[([^\]]+)\] link: View product details/)?.[1]; assert(link, "Expected a real snapshot link ID");
+        const details = await session.follow(first.tab, snapshot.snapshot, link);
+        assert.match(details.content, /24 months/);
+        await assert.rejects(session.follow(first.tab, snapshot.snapshot, link), /Stale snapshot/);
+        await assert.rejects(session.open("https://example.org/"), /origin/);
+        await assert.rejects(session.open(`${fixture.origin}/redirect`));
+        await assert.rejects(runInWorkspace("other-user", () => session.read(first.tab)), /workspace/);
+        const second = await session.open(fixture.origin); assert.notEqual(second.tab, first.tab);
+        await session.closeTab(second.tab);
+        samples.push({ sample: n + 1, fetchMs: +fetchMs.toFixed(1), coldOpenMs: +coldMs.toFixed(1), warmReadMs: +warmReadMs.toFixed(1),
+          staticFetchCorrect: true, fetchDynamicCorrect: false, browserDynamicCorrect: true, linkNavigationCorrect: true, stats: { ...session.stats } });
+      } finally { await session.close(); }
+    });
+    // Native Stagehand form primitives are qualified separately; agent-facing submission tools remain disabled.
+    const browser = await launchLocalBrowser(config);
+    try {
+      const page = await browser.context.newPage(); await page.goto(fixture.origin);
+      await page.locator('input[name="name"]').fill("Synthetic Tester");
+      await page.locator('input[name="city"]').fill("Test City");
+      assert.equal(await page.locator('input[name="name"]').inputValue(), "Synthetic Tester");
+      assert.equal(await page.locator('input[name="city"]').inputValue(), "Test City");
+      assert.equal(fixture.submissions, 0);
+      await browser.context.addCookies([{ name: "qualification", value: "private", url: fixture.origin }]);
+    } finally { await browser.close(); }
+    const fresh = await launchLocalBrowser(config);
+    try { assert.equal((await fresh.context.cookies()).some(c => c.name === "qualification"), false); }
+    finally { await fresh.close(); }
+    const report = { generatedAt: new Date().toISOString(), stagehand: "4.3.0", browser: "local Chromium (fresh temporary profile)",
+      inference: "No model calls in deterministic qualification; live model smoke is separate.", samples,
+      checks: { nativeFormFill: true, formSubmissions: fixture.submissions, freshProfileIsolation: true, workspaceIsolation: true, staleIdsRejected: true, disallowedNavigationRejected: true },
+      interpretation: "Fetch is the baseline for static HTML. Browser adds JavaScript execution, not a guaranteed speed improvement. Cold launch and warm reads measured separately; this is not a Playwright comparison." };
+    await mkdir("data/stagehand", { recursive: true });
+    await writeFile("data/stagehand/qualification.json", JSON.stringify(report, null, 2) + "\n");
+    console.log(JSON.stringify(report, null, 2));
+  } finally { await fixture.close(); }
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

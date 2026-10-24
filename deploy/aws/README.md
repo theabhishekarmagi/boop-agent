@@ -82,3 +82,71 @@ the full verification command, delivered the automatic greeting, then received
 a normal Telegram test message and delivered an actual AI reply. Dashboard status
 changed to “Telegram chat verified.” Composio verification-receive log:
 `log_OEOlrtOmJo6F`; greeting delivery log: `log_QbnU3_limEi4`.
+
+## Temporary public testing
+
+Public testing is an explicit Compose overlay; ordinary private startup keeps
+its existing email allowlist. Run both files to allow any authenticated Google
+account and publish the web proxy through a Cloudflare Quick Tunnel:
+
+```sh
+docker compose -f deploy/aws/compose.yaml -f deploy/aws/compose.public-test.yaml up -d
+```
+
+The tunnel runs on AWS, so the public link does not depend on the laptop's SSH
+forward. No inbound web ports are opened. Google authentication, per-workspace
+data isolation, and the proxy's operator-webhook block remain enforced.
+`BOOP_ALLOW_PUBLIC_SIGNUPS=true` removes the tester email restriction; it does not
+allow anonymous API access. This test still shares the owner's ChatGPT plan.
+
+Read the current HTTPS address from `docker logs aws-tunnel-1`. Set `SITE_URL` on
+the **aws-staging development Convex deployment** to that exact origin before
+using Google login. The Google callback remains the existing Convex site URL.
+The current test origin is `https://deposit-primary-pottery-picnic.trycloudflare.com`.
+Use this public origin for sign-in during public testing rather than localhost.
+Quick Tunnel hostnames change when the tunnel is recreated; update `SITE_URL`
+again if that happens. A stable launch hostname needs a named tunnel/domain.
+
+To return to private testing, stop the `tunnel` service using both Compose files,
+recreate `agent` with only compose.yaml, and restore the development deployment's
+`SITE_URL` to `http://localhost:8080`.
+
+## Shared agent latency controls
+
+All agent runs use the same tool-context policy: recent textual results are
+limited to 16,000 characters each, and older results get smaller previews.
+Full results remain private to that run and can be searched/paged with
+`read_tool_result`; retrieving a result never repeats a provider action.
+Call/result pairs, model reasoning, and uncapped task turns are retained.
+The shared instructions favor filtered metadata, targeted detail retrieval,
+bounded batches, and checking execution status before retrying a timeout.
+These are latency controls, not a response-time guarantee for external services
+or exhaustive tasks.
+
+Independent integration sessions initialize concurrently; simultaneous registry
+refreshes share one request per workspace. Telegram intake checkpoints updates
+to a persistent inbox before advancing the provider offset. Execution is ordered
+within each chat and independent across chats, with saved partial delivery state.
+Intake pauses at 100 queued updates (a batch may add up to 20 more), preserving
+upstream updates rather than dropping them. The existing single-worker deployment
+requirement still applies.
+
+## Development test release — 2026-10-24
+
+Updated the existing Lightsail agent/web containers and the `compassionate-gnat-191`
+development Convex deployment. The existing Quick Tunnel was preserved. The release
+includes bounded Gmail priority overviews, task cancellation/concurrency, retry
+recovery, Telegram connection improvements, and connected-app grouping.
+
+Verified public health HTTP 200, protected API HTTP 401 without authentication,
+the signed-in dashboard's live connection, and zero backend container restarts.
+A real `gpt-6-luna` run in the corrected AWS image passed the synthetic empty-inbox
+case with exactly one Gmail tool call in 7.8 seconds. This is a tool smoke test,
+not an end-to-end mailbox latency benchmark. Browser automation stays disabled.
+
+The first image failed because restrictive archive permissions prevented the
+non-root runtime from reading source files. The Dockerfile now explicitly grants
+read/traverse permission to packaged source files before switching to `USER node`.
+The previous backend was restored while rebuilding; the corrected image was
+tested before activation. Rollback images and a private source/runtime backup
+remain on the server under `/home/ubuntu/boop-backups/20261024`.

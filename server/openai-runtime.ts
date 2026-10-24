@@ -1,3 +1,4 @@
+import { createAgentContext, EFFICIENT_TOOLS } from "./agent-context.js";
 import { isOperator } from "./workspace-context.js";
 import { createHash } from "node:crypto";
 import OpenAI from "openai";
@@ -5,8 +6,10 @@ import { Agent, Runner, OpenAIProvider, tool as agentTool, toolNamespace, type T
 import { z } from "zod";
 import { authMode, getOpenAICredential } from "./openai-auth.js";
 import { mainModel } from "./model-config.js";
+import { MODEL_RETRY_SETTINGS } from "./model-retry.js";
 import { retainStreamedOutput } from "./openai-stream.js";
 import { localTools } from "./local-tools.js";
+import { BROWSER_NAMESPACE, BROWSER_INSTRUCTIONS, createLocalBrowserTools, localBrowserEnabled } from "./browser-tools.js";
 import { researchTools } from "./research-tools.js";
 import { costForUsage, type UsageTotals } from "./usage.js";
 
@@ -68,7 +71,9 @@ export function buildTools(groups: Record<string, ToolGroup>, allowed?: string[]
 
 /** Creates the request-scoped client. Each HTTP request obtains a fresh/renewed credential. */
 export function createOpenAIClient(): OpenAI {
-  return new OpenAI({ apiKey: getOpenAICredential, baseURL: "https://api.openai.com/v1", maxRetries: 0,
+  return new OpenAI({ apiKey: getOpenAICredential, baseURL: "https://api.openai.com/v1",
+    // The runner owns the retry budget and stream safety; avoid nested retries.
+    maxRetries: 0,
     fetch: async (input, init) => {
       const response = await globalThis.fetch(input, init);
       return authMode() === "chatgpt" ? retainStreamedOutput(response) : response;
@@ -78,6 +83,12 @@ export function createOpenAIClient(): OpenAI {
 /** Shared OpenAI agent runner for dispatch, execution, extraction, consolidation, and classification. */
 export async function* runAgentQuery({ prompt, options }: { prompt: string; options: AgentOptions },
   injectedModel?: Model): AsyncGenerator<AgentMessage> {
+  const browser = options.research && localBrowserEnabled() ? createLocalBrowserTools(options.abortController?.signal) : undefined;
+  try { yield* runAgentQueryWithBrowser({ prompt, options }, injectedModel, browser); }
+  finally { await browser?.close(); }
+}
+async function* runAgentQueryWithBrowser({ prompt, options }: { prompt: string; options: AgentOptions },
+  injectedModel?: Model, browser?: ReturnType<typeof createLocalBrowserTools>): AsyncGenerator<AgentMessage> {
   const model = options.model ?? mainModel();
   const signal = options.abortController?.signal;
   signal?.throwIfAborted();
@@ -90,16 +101,22 @@ export async function* runAgentQuery({ prompt, options }: { prompt: string; opti
     tools.push(...research.filter((t) => t.type !== "function"),
       ...toolNamespace({ name: "research", description: "Webpage reading and project playbooks.", tools: functions }));
   }
+  if (browser) {
+    tools.push(...toolNamespace({ name: BROWSER_NAMESPACE, description: "Optional local browser research. Use only when APIs or WebFetch are insufficient.",
+      tools: browser.tools.filter((t): t is FunctionTool => t.type === "function") }));
+  }
+  const context = createAgentContext();
+  tools.push(context.read);
   const provider = injectedModel ? undefined : new OpenAIProvider({ openAIClient: createOpenAIClient(), useResponses: true });
-  const agent = new Agent({ name: options.research ? "Boop task agent" : "Boop", instructions: options.systemPrompt,
+  const agent = new Agent({ name: options.research ? "Boop task agent" : "Boop", instructions: options.systemPrompt + EFFICIENT_TOOLS + (browser ? "\n" + BROWSER_INSTRUCTIONS : ""),
     model: injectedModel ?? model, tools,
-    modelSettings: { store: false, parallelToolCalls: false, reasoning: { effort: "low" },
+    modelSettings: { retry: MODEL_RETRY_SETTINGS, store: false, parallelToolCalls: false, reasoning: { effort: "low" },
       // Stateless HTTP continuation needs encrypted reasoning items in local history.
       providerData: { include: ["reasoning.encrypted_content"] } },
   });
   const runner = new Runner({ ...(provider ? { modelProvider: provider } : {}), tracingDisabled: true });
   const result = await runner.run(agent, [{ role: "user", content: prompt }], {
-    stream: true, maxTurns: null, signal,
+    stream: true, maxTurns: null, signal, callModelInputFilter: context.filter,
   });
   // Observe completion even if the stream consumer breaks early.
   void result.completed.catch(() => {});

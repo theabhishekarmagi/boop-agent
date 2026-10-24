@@ -1,0 +1,12 @@
+# Temporary public testing. Google sign-in and workspace isolation still apply.
+# Start with both compose.yaml and this file; see README.md.
+services:
+  agent:
+    environment:
+      BOOP_ALLOW_PUBLIC_SIGNUPS: "true"
+  tunnel:
+    image: cloudflare/cloudflared@sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39
+    command: tunnel --no-autoupdate --protocol http2 --url http://web:8080
+    depends_on:
+      - web
+    restart: unless-stopped

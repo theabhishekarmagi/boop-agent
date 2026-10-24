@@ -16,7 +16,7 @@ import {
 import { refreshIntegrations } from "./integrations/registry.js";
 import { getStoredWebhookSecret } from "./composio-webhook.js";
 import { handleEmailEvent } from "./proactive-email.js";
-import { beginTelegramChat, telegramChatStatus } from "./telegram.js";
+import { beginTelegramChat, confirmTelegramChat, telegramChatStatus } from "./telegram.js";
 import { convex } from "./convex-client.js";
 import { api } from "../convex/_generated/api.js";
 
@@ -37,6 +37,15 @@ export function createComposioRouter(): express.Router {
       res.status(400).json({ error: error instanceof Error && error.message.startsWith("This bot is already")
         ? error.message : "Unable to start Telegram chat. Check that this bot is connected and try again." });
     }
+  });
+
+  router.post("/connections/:id/telegram-chat/confirm", async (req, res) => {
+    const requestId = req.body?.requestId;
+    if (typeof requestId !== "string" || !/^[a-zA-Z0-9_-]{32}$/.test(requestId)) {
+      res.status(400).json({ error: "Invalid Telegram approval request." }); return;
+    }
+    try { res.json(await confirmTelegramChat(req.params.id, requestId)); }
+    catch { res.status(400).json({ error: "Unable to confirm this request. Refresh and try again; expired requests require a new /start." }); }
   });
 
   router.get("/toolkits", async (req, res) => {
@@ -99,7 +108,9 @@ export function createComposioRouter(): express.Router {
           authMode: t.authMode,
           hasAuthConfig: configured.has(t.slug),
           logoUrl: m?.logo ?? null,
-          description: m?.description ?? null,
+          description: t.slug === "googlesuper"
+            ? "Gmail, Calendar, Tasks, Drive, Docs, Sheets, and Slides — connect your Google account once. Available actions depend on the permissions you approve."
+            : m?.description ?? null,
           toolCount: m?.toolsCount ?? null,
           connections: conns.map(toConnectionView),
         };

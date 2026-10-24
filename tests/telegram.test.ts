@@ -108,3 +108,122 @@ test("Composio Telegram string and numeric IDs normalize to the same private sen
   item.message!.from!.id = "992";
   assert.equal(privateTelegramSender(item), null);
 });
+
+test("durable intake continues while a task runs, with order per chat and no duplicate updates", async () => {
+  const { createTelegramInbox } = await import("../server/telegram.js");
+  const state: Parameters<typeof createTelegramInbox>[1] = {};
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const started: string[] = [], sent: number[] = [];
+  const snapshots: typeof state[] = [];
+  const inbox = createTelegramInbox("bot", state, {
+    authorize: async () => "message",
+    generate: async (chat) => { started.push(chat); if (started.length === 1) await blocked; return "ok"; },
+    send: async chat => { sent.push(chat); }, record: async () => {},
+    save: async next => { snapshots.push(structuredClone(next)); },
+  });
+  await inbox.enqueue([update(1)]);
+  await new Promise(resolve => setImmediate(resolve));
+  await inbox.enqueue([update(1), update(2), update(3, 992)]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(state.offset, 4);
+  assert(sent.includes(992), "another chat must complete before the first task finishes");
+  assert.equal(started.filter(chat => chat.endsWith(":991")).length, 1, "same chat stays ordered");
+  assert(snapshots.some(s => s.offset === 4 && s.inbox?.some(j => j.update.update_id === 2)));
+  release();
+  await inbox.idle();
+  assert.equal(started.length, 3);
+  assert.equal(state.inbox?.length, 0);
+});
+
+test("persisted inbox survives restart and resumes failed delivery without regenerating", async () => {
+  const { createTelegramInbox } = await import("../server/telegram.js");
+  const state: Parameters<typeof createTelegramInbox>[1] = { offset: 3, inbox: [{ update: update(2), checkpoint: { pending: { updateId: 2, reply: "cached reply", sentChunks: 0 } } }] };
+  let generated = 0;
+  let fail = true;
+  const sent: string[] = [];
+  const inbox = createTelegramInbox("bot", state, {
+    authorize: async () => "message",
+    generate: async () => { generated++; return "wrong"; },
+    send: async (_chat, reply) => { if (fail) throw new Error("network"); sent.push(reply); },
+    record: async () => {}, save: async () => {},
+  });
+  inbox.wake();
+  await assert.rejects(inbox.idle(), /network/);
+  assert.equal(state.inbox?.length, 1);
+  fail = false;
+  inbox.wake(); await inbox.idle();
+  assert.equal(generated, 0);
+  assert.deepEqual(sent, ["cached reply"]);
+  assert.equal(state.inbox?.length, 0);
+});
+
+test("failed durable intake does not advance the provider offset", async () => {
+  const { createTelegramInbox } = await import("../server/telegram.js");
+  const state: Parameters<typeof createTelegramInbox>[1] = {};
+  let calls = 0;
+  const inbox = createTelegramInbox("bot", state, {
+    authorize: async () => "message", generate: async () => { calls++; return "ok"; },
+    send: async () => {}, record: async () => {}, save: async () => { throw new Error("disk unavailable"); },
+  });
+  await assert.rejects(inbox.enqueue([update(1)]), /disk unavailable/);
+  assert.equal(state.offset, undefined);
+  assert.equal(state.inbox, undefined);
+  assert.equal(calls, 0);
+});
+
+test("plain /start queues approval without running the agent; approved senders get a greeting", async () => {
+  const { authorizeUpdate } = await import("../server/telegram.js");
+  let approved = false;
+  const requested: Array<{ chatId: string; senderId: string; requestId: string }> = [];
+  const deps = {
+    verified: async (_connection: string, chat: string) => approved && chat === "991",
+    verify: async () => false,
+    request: async (candidate: { chatId: string; senderId: string; requestId: string }) => { requested.push(candidate); return true; },
+    legacyAllowed: () => false,
+  };
+  const start = update(1); start.message!.text = "/start";
+  assert.equal(await authorizeUpdate("ca_bot", start, deps), "ignore");
+  assert.equal(requested.length, 1);
+  assert.equal(requested[0].chatId, "991");
+  assert.match(requested[0].requestId, /^[a-zA-Z0-9_-]{32}$/);
+  assert.equal(await authorizeUpdate("ca_bot", update(2), deps), "ignore");
+  approved = true;
+  assert.equal(await authorizeUpdate("ca_bot", start, deps), "linked");
+  assert.equal(await authorizeUpdate("ca_bot", update(3), deps), "message");
+  assert.equal(await authorizeUpdate("ca_bot", update(4, 992), deps), "ignore");
+  const group = update(5); group.message!.text = "/start"; group.message!.chat.type = "group";
+  assert.equal(await authorizeUpdate("ca_bot", group, deps), "ignore");
+  const bot = update(6); bot.message!.text = "/start"; bot.message!.from!.is_bot = true;
+  assert.equal(await authorizeUpdate("ca_bot", bot, deps), "ignore");
+  assert.equal(requested.length, 1);
+  let generations = 0;
+  const sent: string[] = [];
+  await processTelegramBatch("ca_bot", [start], {}, {
+    authorize: candidate => authorizeUpdate("ca_bot", candidate, deps),
+    generate: async () => { generations++; return "should not run"; },
+    send: async (_chat, text) => { sent.push(text); }, record: async () => {}, save: async () => {},
+  });
+  assert.equal(generations, 0);
+  assert.match(sent[0], /^Hi! Your Telegram is connected/);
+});
+
+test("dashboard approval greeting is acknowledged only after delivery and retried on failure", async () => {
+  const { deliverTelegramGreeting } = await import("../server/telegram.js");
+  const channel = { chatId: "991", greetingPending: "approval-id" as string | undefined };
+  let failed = false, acknowledgements = 0, attempts = 0;
+  const deps = {
+    send: async (chatId: string, text: string) => {
+      attempts++;
+      assert.equal(chatId, "991"); assert.match(text, /^Hi!/);
+      if (!failed) { failed = true; throw new Error("provider unavailable"); }
+    },
+    acknowledge: async (id: string) => { assert.equal(id, "approval-id"); acknowledgements++; channel.greetingPending = undefined; return null; },
+  };
+  await assert.rejects(deliverTelegramGreeting("ca_bot", channel, deps), /provider unavailable/);
+  assert.equal(acknowledgements, 0);
+  await deliverTelegramGreeting("ca_bot", channel, deps);
+  await deliverTelegramGreeting("ca_bot", channel, deps);
+  assert.equal(attempts, 2);
+  assert.equal(acknowledgements, 1);
+});

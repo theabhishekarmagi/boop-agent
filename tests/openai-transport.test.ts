@@ -17,7 +17,7 @@ test("actual SDK HTTP requests satisfy the ChatGPT stateless streaming contract 
     assert.equal(new Headers(init?.headers).get("authorization"), "Bearer plan-token");
     const body = JSON.parse(String(init?.body)); bodies.push(body);
     assert.equal(body.store, false); assert.equal(body.stream, true); assert(Array.isArray(body.input));
-    assert.equal(body.instructions, "You are Boop");
+    assert(body.instructions.startsWith("You are Boop\n"), "caller instructions must be preserved before runtime guidance");
     for (const field of ["previous_response_id", "conversation", "max_output_tokens", "max_tool_calls", "metadata", "background", "temperature", "top_p", "truncation", "user", "prompt_cache_retention"]) assert(!Object.hasOwn(body, field), `${field} must be absent`);
     assert(!body.input.some((item: any) => item.role === "system"));
     assert(body.tools.some((t: any) => t.type === "namespace" && t.name === "memory"));

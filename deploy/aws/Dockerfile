@@ -6,7 +6,9 @@ COPY server ./server
 COPY convex ./convex
 COPY scripts/preflight.mjs ./scripts/preflight.mjs
 COPY tsconfig.json ./
-RUN mkdir -p data && chown node:node data
+RUN chmod a+r package.json package-lock.json tsconfig.json \
+    && chmod -R a+rX server convex scripts \
+    && mkdir -p data && chown node:node data
 USER node
 ENV NODE_ENV=production
 EXPOSE 3456

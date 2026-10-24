@@ -1,10 +1,11 @@
+import { modelFailureMessage } from "./model-retry.js";
 import { runAgentQuery, tool, createToolGroup } from "./openai-runtime.js";
 import { z } from "zod";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 import { createMemoryMcp } from "./memory/tools.js";
 import { extractAndStore } from "./memory/extract.js";
-import { availableIntegrations, spawnExecutionAgent } from "./execution-agent.js";
+import { availableIntegrations, startBackgroundAgent, activeConversationTasks } from "./execution-agent.js";
 import { createAutomationMcp } from "./automation-tools.js";
 import { createDraftDecisionMcp } from "./draft-tools.js";
 import { createSelfMcp } from "./self-tools.js";
@@ -19,13 +20,16 @@ You are a DISPATCHER, not a doer. Your job:
 1. Understand what the user wants.
 2. Decide: answer directly (quick facts, chit-chat, anything you already know) OR spawn_agent (real work that needs tools like email, calendar, web, etc.).
 3. When you spawn, give the agent a crisp, specific task — not the raw user message.
-4. When the agent returns, relay the result in YOUR voice, tightened for iMessage.
+4. spawn_agent returns immediately with a task ID. Confirm it is started or queued, then finish this chat turn. Its final result is delivered automatically later.
+5. Independent tasks run in parallel. Use depends_on only when this task needs another task's output or must run after it. Related topics alone do not imply a dependency. Never invent task IDs. If the intended prerequisite is unclear, ask a short clarification.
+For a simple Gmail priority/unread inbox overview, choose workflow="gmail_priority" and exactly one connected integration: "gmail" or "googlesuper" (Google Workspace). Use "googlesuper" when that is the user's connected Google account; never request an unavailable integration. Google Workspace also provides Calendar, Tasks, Drive, Docs, Sheets and Slides through GOOGLESUPER tools; do not ask users to connect each service separately. Use the actual toolkit's tool slugs, never GMAIL_/GOOGLECALENDAR_ tools with a googlesuper connection. Permissions depend on what the user approved; on a missing-scope error explain reconnection is needed, never claim success. The priority workflow has a read-only bounded scan. For exhaustive searches, custom dates beyond 30 days, or mailbox actions, choose "general". Split unrelated work into separate tasks.
+6. Consult list_active_tasks when a new request refers to running work ("use those results", "after that finishes", "summarize the report you're making"). Pass the relevant IDs in depends_on; the runtime waits and supplies prerequisite results. A failed/cancelled prerequisite prevents its dependent task from running.
 
 Tone: Warm, witty, concise. Write like you're texting a friend. No corporate voice. No bullet dumps unless the user asked for a list.
 
 Your only tools:
 - recall / write_memory (durable memory for this user)
-- spawn_agent (dispatches a sub-agent that CAN touch the world)
+- spawn_agent / list_active_tasks (background work and its dependencies)
 - create_automation / list_automations / toggle_automation / delete_automation
 - list_drafts / send_draft / reject_draft
 - get_config / set_model / set_timezone / list_integrations / search_composio_catalog / inspect_toolkit (self-inspection)
@@ -50,7 +54,7 @@ the sub-agent works. Examples of good acks:
   "Looking into your calendar…"
   "Drafting that email now."
   "Checking Slack, hold tight."
-Order: send_ack → spawn_agent → (wait) → final reply with the result.
+Order: send_ack → spawn_agent → briefly confirm started/queued. Do not wait or poll for completion.
 Skip the ack ONLY for things you'll answer in under 2 seconds (chit-chat,
 simple memory recall, single automation toggle).
 
@@ -250,9 +254,12 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     name: "boop-spawn",
     version: "0.1.0",
     tools: [
+      tool("list_active_tasks", "List queued/running tasks in this conversation to identify dependencies. Never wait or poll for completion.", {}, async () => ({
+        content: [{ type: "text", text: JSON.stringify(activeConversationTasks(opts.conversationId)) }],
+      })),
       tool(
         "spawn_agent",
-        "Spawn a focused sub-agent to do real work using external tools. Returns the agent's final answer. Use for anything requiring lookups, drafting, or actions in the user's integrations.",
+        "Start a focused background task and return its ID immediately. Its result is delivered later. Independent tasks run in parallel; depends_on waits for named prerequisite tasks in this conversation.",
         {
           task: z
             .string()
@@ -261,19 +268,23 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
             .array(z.string())
             .describe(`Which integrations to give the agent. Available: ${integrations.join(", ") || "(none)"}`),
           name: z.string().optional().describe("Short label for the agent."),
+          workflow: z.enum(["general", "gmail_priority"]).optional().describe("Use gmail_priority for a bounded read-only priority/unread inbox overview; general for other work or exhaustive/custom email searches."),
+          depends_on: z.array(z.string()).max(20).optional().describe("Existing task IDs from list_active_tasks or prior spawn results whose output is required first. Omit for independent tasks."),
         },
         async (args) => {
-          const res = await spawnExecutionAgent({
+          const res = await startBackgroundAgent({
             task: args.task,
             integrations: args.integrations,
             conversationId: opts.conversationId,
             name: args.name,
+            dependsOn: args.depends_on,
+            workflow: args.workflow,
           });
           return {
             content: [
               {
                 type: "text" as const,
-                text: `[agent ${res.agentId} ${res.status}]\n\n${res.result}`,
+                text: JSON.stringify({ ...res, note: "Task accepted. Finish this turn now; the final result will be delivered automatically." }),
               },
             ],
           };
@@ -325,6 +336,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           "mcp__boop-memory__write_memory",
           "mcp__boop-memory__recall",
           "mcp__boop-spawn__spawn_agent",
+          "mcp__boop-spawn__list_active_tasks",
           "mcp__boop-automations__create_automation",
           "mcp__boop-automations__list_automations",
           "mcp__boop-automations__toggle_automation",
@@ -367,7 +379,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     }
   } catch (err) {
     console.error(`[turn ${tag}] query failed`, err);
-    reply = "Sorry — I hit an error processing that. Try again in a moment.";
+    reply = modelFailureMessage(err) ?? "Sorry — I hit an error processing that. Try again in a moment.";
   }
 
   // Sometimes the model produces a placeholder string like "(no output)" or

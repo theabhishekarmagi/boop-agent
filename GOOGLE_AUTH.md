@@ -37,6 +37,22 @@ The Convex deployment requires `SITE_URL`, `BETTER_AUTH_SECRET`,
 by Convex. Google login only requests basic identity scopes; integration access
 is handled separately by Composio.
 
+### Local frontend with a cloud development backend
+
+All Convex URLs must point to the same deployment: `CONVEX_URL` and
+`VITE_CONVEX_URL` use its `.convex.cloud` URL, while `VITE_CONVEX_SITE_URL`
+uses its `.convex.site` URL. The worker signing key must also match that backend.
+Keep the deployment's `SITE_URL` set to the hosted preview and configure
+`ADDITIONAL_AUTH_TRUSTED_ORIGINS` on that same development deployment as
+`http://localhost:5173,http://127.0.0.1:5173` when testing locally. Only add
+origins you control; do not use a wildcard. This allows browser CORS requests
+and OAuth return URLs without breaking hosted sign-in. The Google callback
+remains the cloud backend's `/api/auth/callback/google` endpoint.
+
+If `/api/auth/get-session` returns 200 but the browser says it cannot reach
+sign-in, check that the response allows the frontend's exact Origin. An
+untrusted origin can produce this symptom even when the database is reachable.
+
 ## Scope and deployment
 
 Google accounts now have separate workspaces. Convex queries and mutations,

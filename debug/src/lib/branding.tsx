@@ -10,6 +10,7 @@ type ToolBrand = {
 };
 
 const TOOL_BRANDS: ToolBrand[] = [
+  { key: "googlesuper", displayName: "Google Workspace", domain: "workspace.google.com", aliases: ["googlesuper", "google-workspace"] },
   { key: "gmail", displayName: "Gmail", domain: "mail.google.com", aliases: ["gmail"] },
   {
     key: "googlecalendar",

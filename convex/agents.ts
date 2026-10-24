@@ -16,8 +16,10 @@ export const create = mutation({
     conversationId: v.optional(v.string()),
     name: v.string(),
     task: v.string(),
+    workflow: v.optional(v.union(v.literal("general"), v.literal("gmail_priority"))),
     mcpServers: v.array(v.string()),
   },
+  returns: v.id("executionAgents"),
   handler: async (ctx, args) => {
     const ownerId = await requireWorkspaceOwner(ctx);
     return await ctx.db.insert("executionAgents", { ownerId,

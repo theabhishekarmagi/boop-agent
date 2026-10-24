@@ -1,0 +1,125 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import type { StagehandBrowser } from "@browserbasehq/stagehand";
+import { BROWSER_NAMESPACE, LocalResearchBrowser, localBrowserEnabled, browserConfig, createLocalBrowserTools, type BrowserConfig } from "../server/stagehand-browser.js";
+import { OPERATOR_OWNER, runInWorkspace } from "../server/workspace-context.js";
+import { runAgentQuery } from "../server/openai-runtime.js";
+import { ScriptedModel, assistantMessage, functionCall } from "@openai/agents-core/testing";
+
+const config: BrowserConfig = { origins: ["https://allowed.test"], headless: true, idleMs: 60_000, maxPages: 2 };
+function fake(tree = "[1] link: Details") {
+  let launches = 0, closes = 0;
+  const launch = async () => {
+    launches++;
+    return { close: async () => { closes++; }, context: { newPage: async () => {
+      let url = "about:blank";
+      return { goto: async (value: string) => { url = value; return null; }, url: async () => url, title: async () => "fixture",
+        snapshot: async () => ({ formattedTree: tree, xpathMap: { "1": "/html/body/a" }, urlMap: {} }),
+        evaluate: async () => "https://allowed.test/details", close: async () => {} };
+    } } } as unknown as StagehandBrowser;
+  };
+  return { launch, get launches() { return launches; }, get closes() { return closes; } };
+}
+const validate = async (value: string) => new URL(value);
+test("browser flag is opt-in, operator-only, and disabled in production/public mode", () => {
+  const saved = { flag: process.env.BOOP_STAGEHAND_ENABLED, node: process.env.NODE_ENV, pub: process.env.BOOP_PUBLIC_MODE };
+  try {
+    process.env.BOOP_STAGEHAND_ENABLED = "true"; process.env.NODE_ENV = "development"; process.env.BOOP_PUBLIC_MODE = "false";
+    assert.equal(localBrowserEnabled(), false);
+    runInWorkspace("customer", () => assert.equal(localBrowserEnabled(), false));
+    runInWorkspace(OPERATOR_OWNER, () => {
+      assert.equal(localBrowserEnabled(), true); process.env.NODE_ENV = "production"; assert.equal(localBrowserEnabled(), false);
+      process.env.NODE_ENV = "development"; process.env.BOOP_PUBLIC_MODE = "true"; assert.equal(localBrowserEnabled(), false);
+    });
+  } finally {
+    for (const [key, value] of Object.entries({ BOOP_STAGEHAND_ENABLED: saved.flag, NODE_ENV: saved.node, BOOP_PUBLIC_MODE: saved.pub })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+test("origin configuration rejects credentials, paths, and private HTTP fixtures", () => {
+  const old = process.env.BOOP_STAGEHAND_ORIGINS;
+  try {
+    for (const value of ["http://127.0.0.1:1234", "https://user:pass@allowed.test", "https://allowed.test/path"]) {
+      process.env.BOOP_STAGEHAND_ORIGINS = value; assert.throws(browserConfig);
+    }
+  } finally { if (old === undefined) delete process.env.BOOP_STAGEHAND_ORIGINS; else process.env.BOOP_STAGEHAND_ORIGINS = old; }
+});
+test("tools are lazy, tabs are reused, stale references and other workspaces are refused", async () => runInWorkspace(OPERATOR_OWNER, async () => {
+  const f = fake(); const session = new LocalResearchBrowser(config, undefined, f.launch, validate);
+  try {
+    const tools = createLocalBrowserTools(undefined, session); assert.equal(tools.tools.length, 4); assert.equal(f.launches, 0);
+    const first = await session.open("https://allowed.test/"); const second = await session.read(first.tab);
+    assert.equal(f.launches, 1);
+    await assert.rejects(session.follow(first.tab, first.snapshot, "1"), /Stale snapshot/);
+    await assert.rejects(session.follow(first.tab, second.snapshot, "missing"), /Unknown element/);
+    await assert.rejects(runInWorkspace("other", () => session.read(first.tab)), /workspace/);
+    await assert.rejects(session.open("https://blocked.test"), /origin/);
+    const details = await session.follow(first.tab, second.snapshot, "1"); assert.equal(details.url, "https://allowed.test/details");
+    await session.open("https://allowed.test/"); await assert.rejects(session.open("https://allowed.test/"), /limit/);
+  } finally { await Promise.all([session.close(), session.close()]); }
+  assert.equal(f.closes, 1);
+  await assert.rejects(session.read("tab-1"), /ended/);
+}));
+test("cancellation during browser launch closes exactly once and releases capacity", async () => runInWorkspace(OPERATOR_OWNER, async () => {
+  const f = fake(); const abort = new AbortController(); let finish!: () => void;
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  const session = new LocalResearchBrowser(config, abort.signal, async () => { await gate; return f.launch(); }, validate);
+  const opening = session.open("https://allowed.test/");
+  await new Promise<void>(resolve => setImmediate(resolve)); abort.abort(); finish();
+  await assert.rejects(opening); await session.close(); assert.equal(f.closes, 1);
+  const next = new LocalResearchBrowser(config, undefined, f.launch, validate);
+  try { await next.open("https://allowed.test/"); } finally { await next.close(); }
+  assert.equal(f.closes, 2);
+}));
+test("worker concurrency is bounded without sharing the first session", async () => runInWorkspace(OPERATOR_OWNER, async () => {
+  const f = fake(); const a = new LocalResearchBrowser(config, undefined, f.launch, validate); const b = new LocalResearchBrowser(config, undefined, f.launch, validate);
+  try { await a.open("https://allowed.test/"); await assert.rejects(b.open("https://allowed.test/"), /busy/); assert.equal(f.launches, 1); }
+  finally { await a.close(); await b.close(); }
+}));
+test("real agent runner exposes browser tools only on eligible research runs and keeps launch lazy", async () => runInWorkspace(OPERATOR_OWNER, async () => {
+  const old = process.env.BOOP_STAGEHAND_ENABLED; const oldNode = process.env.NODE_ENV; const oldPublic = process.env.BOOP_PUBLIC_MODE;
+  process.env.BOOP_STAGEHAND_ENABLED = "true"; process.env.NODE_ENV = "development"; process.env.BOOP_PUBLIC_MODE = "false";
+  try {
+    const model = new ScriptedModel([[functionCall("BrowserOpen", { url: "http://127.0.0.1" }, { callId: "denied", namespace: BROWSER_NAMESPACE })], [assistantMessage("Blocked")]]);
+    for await (const _ of runAgentQuery({ prompt: "test", options: { systemPrompt: "test", research: true } }, model)) { /* consume */ }
+    assert.match(JSON.stringify(model.calls[1].request.input), /not enabled/);
+    assert.match(JSON.stringify(model.calls[0].request.tools), /BrowserOpen/);
+    const browserTools = model.calls[0].request.tools.filter(t => t.type === "function" && t.name.startsWith("Browser"));
+    assert.equal(browserTools.length, 4);
+    assert(browserTools.every(t => t.type === "function" && t.namespace === BROWSER_NAMESPACE));
+    const customer = new ScriptedModel([[assistantMessage("No browser")]]);
+    await runInWorkspace("customer", async () => { for await (const _ of runAgentQuery({ prompt: "test", options: { systemPrompt: "test", research: true } }, customer)) {} });
+    assert.doesNotMatch(JSON.stringify(customer.calls[0].request.tools), /BrowserOpen/);
+    const normal = new ScriptedModel([[assistantMessage("No research")]]);
+    for await (const _ of runAgentQuery({ prompt: "test", options: { systemPrompt: "test" } }, normal)) {}
+    assert.doesNotMatch(JSON.stringify(normal.calls[0].request.tools), /BrowserOpen/);
+  } finally {
+    for (const [key, value] of Object.entries({ BOOP_STAGEHAND_ENABLED: old, NODE_ENV: oldNode, BOOP_PUBLIC_MODE: oldPublic })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+}));
+
+test("long snapshots can be paged without another navigation", async () => runInWorkspace(OPERATOR_OWNER, async () => {
+  const f = fake("x".repeat(15000) + "HIDDEN_DETAIL");
+  const session = new LocalResearchBrowser(config, undefined, f.launch, validate);
+  try {
+    const first = await session.open("https://allowed.test/");
+    assert.equal(first.nextOffset, 14000); assert(!first.content.includes("HIDDEN_DETAIL"));
+    const next = await session.read(first.tab, first.nextOffset!);
+    assert(next.content.includes("HIDDEN_DETAIL")); assert.equal(next.nextOffset, null);
+    assert.equal(f.launches, 1);
+  } finally { await session.close(); }
+}));
+test("idle browser profiles are closed and do not reserve capacity forever", async () => runInWorkspace(OPERATOR_OWNER, async () => {
+  const f = fake(); const session = new LocalResearchBrowser({ ...config, idleMs: 10 }, undefined, f.launch, validate);
+  try {
+    await session.open("https://allowed.test/");
+    await new Promise(resolve => setTimeout(resolve, 30));
+    await session.close(); assert.equal(f.closes, 1);
+    await assert.rejects(session.read("tab-1"), /ended/);
+    const next = new LocalResearchBrowser(config, undefined, f.launch, validate);
+    try { await next.open("https://allowed.test/"); } finally { await next.close(); }
+  } finally { await session.close(); }
+}));

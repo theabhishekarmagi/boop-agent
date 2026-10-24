@@ -1,3 +1,4 @@
+import { apiFetch } from "../lib/api-fetch";
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api.js";
@@ -11,12 +12,29 @@ interface LogEntry {
 }
 
 const STATUS_CONFIG: Record<string, { dot: string; label: string; color: string }> = {
-  spawned: { dot: "bg-amber-400", label: "Spawning", color: "text-amber-400" },
+  spawned: { dot: "bg-amber-400", label: "Queued", color: "text-amber-400" },
   running: { dot: "bg-sky-400", label: "Running", color: "text-sky-400" },
   completed: { dot: "bg-emerald-400", label: "Done", color: "text-emerald-400" },
   failed: { dot: "bg-rose-400", label: "Failed", color: "text-rose-400" },
   cancelled: { dot: "bg-slate-500", label: "Cancelled", color: "text-slate-500" },
 };
+
+function StopAgentButton({ agentId }: { agentId: string }) {
+  const [stopping, setStopping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return <span className="inline-flex items-center gap-2">
+    <button type="button" disabled={stopping} className="text-xs text-rose-500 underline disabled:opacity-50"
+      onClick={async event => {
+        event.stopPropagation(); setStopping(true); setError(null);
+        try {
+          const response = await apiFetch(`/api/agents/${encodeURIComponent(agentId)}/cancel`, { method: "POST" });
+          const result = await response.json();
+          if (!response.ok || !result.ok) throw new Error("Unable to stop this task. Refresh and try again.");
+        } catch (err) { setError(err instanceof Error ? err.message : "Unable to stop task."); setStopping(false); }
+      }}>{stopping ? "Stopping…" : "Stop task"}</button>
+    {error && <span role="alert" className="text-xs text-rose-500">{error}</span>}
+  </span>;
+}
 
 function formatLogRow(log: LogEntry): string {
   if (log.logType === "tool_use") return prettyToolName(log.toolName);
@@ -151,6 +169,7 @@ export function AgentsPanel({ isDark }: { isDark: boolean }) {
                   >
                     {isActive && <BrailleIndicator />}
                     {cfg.label}
+                    {isActive && <StopAgentButton agentId={agent.agentId} />}
                   </span>
                 </div>
 
@@ -269,6 +288,7 @@ function AgentDetail({
           {agent.name}
         </span>
         <span className={`text-xs ${cfg.color}`}>{cfg.label}</span>
+        {isActive && <StopAgentButton agentId={agent.agentId} />}
         <div className="ml-auto flex items-center gap-3 text-xs mono">
           {agent.costUsd > 0 && (
             <span className="text-emerald-500 font-semibold">

@@ -1,0 +1,33 @@
+import { createServer } from "node:http";
+import { once } from "node:events";
+import { randomUUID } from "node:crypto";
+
+/** Synthetic test data only. No logins, personal data, paid services or outgoing messages. */
+export async function startBrowserFixture() {
+  const secret = `BOOP_DYNAMIC_${randomUUID().slice(0, 8)}`;
+  let submissions = 0;
+  const server = createServer((req, res) => {
+    if (req.url === "/inventory") { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ value: secret })); return; }
+    if (req.url === "/details") { res.setHeader("content-type", "text/html"); res.end('<html><title>Details</title><body><main><h1>Product details</h1><p>Warranty: 24 months</p></main></body></html>'); return; }
+    if (req.url === "/redirect") { res.writeHead(302, { location: "https://example.org/" }); res.end(); return; }
+    if (req.method === "POST") { submissions++; res.end("received"); return; }
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    res.end(`<!doctype html><html><head><title>Boop browser qualification</title></head><body>
+      <main><h1>Boop test catalog</h1><p>Static item: notebook — 4 USD</p>
+      <a href="/details">View product details</a><a href="https://example.org/">Outside allowed origin</a>
+      <button type="button">Unsafe button</button>
+      <section id="dynamic" aria-label="Live inventory"></section>
+      <form method="POST" action="/submit"><label>Name<input name="name" aria-label="Name"></label>
+      <label>City<input name="city" aria-label="City"></label><button type="submit">Submit application</button></form>
+      </main><script>
+      setTimeout(async () => { const value = await fetch('/inventory').then(r=>r.json());
+        document.getElementById('dynamic').textContent = 'Live item: telescope — 29 USD. Verification: ' + value.value; }, 50);
+      </script></body></html>`);
+  });
+  server.listen(0, "127.0.0.1"); await once(server, "listening");
+  const address = server.address(); if (!address || typeof address === "string") throw new Error("Fixture did not start.");
+  const origin = `http://127.0.0.1:${address.port}`;
+  return { origin, secret, get submissions() { return submissions; },
+    validate: async (value: string) => { const url = new URL(value); if (url.origin !== origin || url.username || url.password) throw new Error("Not the test fixture."); return url; },
+    close: () => new Promise<void>((resolve, reject) => { server.closeAllConnections(); server.close(error => error ? reject(error) : resolve()); }) };
+}

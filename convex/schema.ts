@@ -5,6 +5,11 @@ export default defineSchema({
   telegramChannels: defineTable({
     ownerId: v.string(), connectionId: v.string(), botId: v.string(), botUsername: v.string(),
     tokenHash: v.optional(v.string()), expiresAt: v.optional(v.number()),
+    pendingChats: v.optional(v.array(v.object({
+      requestId: v.string(), chatId: v.string(), senderId: v.string(),
+      username: v.optional(v.string()), firstName: v.optional(v.string()), expiresAt: v.number(),
+    }))),
+    greetingPending: v.optional(v.string()),
     chatId: v.optional(v.string()), senderId: v.optional(v.string()), updatedAt: v.number(),
   }).index("by_ownerId_and_connectionId", ["ownerId", "connectionId"])
     .index("by_botId", ["botId"]),
@@ -75,6 +80,7 @@ export default defineSchema({
     conversationId: v.optional(v.string()),
     name: v.string(),
     task: v.string(),
+    workflow: v.optional(v.union(v.literal("general"), v.literal("gmail_priority"))),
     status: v.union(
       v.literal("spawned"),
       v.literal("running"),

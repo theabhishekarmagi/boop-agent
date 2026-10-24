@@ -79,33 +79,7 @@ const STATUS_COLORS: Record<string, { dot: string; label: string; badge: string 
 interface NeedsAuthConfigInfo {
   slug: string;
   message: string;
-  setupUrl: string;
 }
-
-// Per-toolkit guidance for BYO OAuth setup. Composio doesn't host a shared OAuth
-// app for these — the user has to register one on the toolkit's developer portal,
-// then paste the credentials into Composio's auth-configs page. Adding entries
-// here makes the setup flow self-explanatory; missing entries fall back to a
-// generic message and the Composio link.
-const BYO_PORTALS: Record<string, { label: string; url: string; note?: string }> = {
-  twitter: {
-    label: "X (Twitter) Developer Portal",
-    url: "https://developer.x.com/en/portal/dashboard",
-    note: "Create a Project → App, then grab the OAuth 2.0 Client ID + Secret.",
-  },
-  linkedin: {
-    label: "LinkedIn Developer Portal",
-    url: "https://www.linkedin.com/developers/apps",
-    note: "Create an App, request the scopes you need, copy the Client ID + Secret.",
-  },
-  salesforce: {
-    label: "Salesforce — Connected Apps",
-    url: "https://help.salesforce.com/s/articleView?id=connected_app_create.htm",
-    note: "Create a Connected App in your org's Setup, copy the Consumer Key + Secret.",
-  },
-};
-
-const COMPOSIO_DASHBOARD_URL = "https://dashboard.composio.dev";
 
 const INTRO_DISMISSED_KEY = "boop:connections:intro-dismissed";
 const TOAST_TIMEOUT_MS = 6000;
@@ -187,10 +161,9 @@ function IntroCard({ isDark, onDismiss }: { isDark: boolean; onDismiss: () => vo
                   isDark ? "bg-amber-400/10 text-amber-400" : "bg-amber-50 text-amber-700"
                 }`}
               >
-                Needs auth config
+                Coming soon
               </span>
-              Toolkit's terms don't allow a shared OAuth app, so you have to register your own
-              once. The card shows the steps.
+              Boop must enable this app first. You do not need a developer account.
             </li>
           </ul>
         </div>
@@ -334,7 +307,6 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
             setNeedsAuthConfig({
               slug,
               message: err.error,
-              setupUrl: err.setupUrl ?? COMPOSIO_DASHBOARD_URL,
             });
             setBusy(null);
             return;
@@ -461,7 +433,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
         title="Composio toolkits"
         count={activeCount}
         isDark={isDark}
-        hint={data?.enabled === false ? "Disabled — set COMPOSIO_API_KEY in .env.local" : undefined}
+        hint={data?.enabled === false ? "Temporarily unavailable" : undefined}
       />
 
       {showIntro && data?.enabled !== false && <IntroCard isDark={isDark} onDismiss={dismissIntro} />}
@@ -482,23 +454,13 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
           }`}
         >
           <div className="font-medium mb-1">
-            <span className="mono">{needsAuthConfig.slug}</span> needs a one-time auth config
+            This connection is not available yet
           </div>
           <div className="text-xs opacity-90 mb-2">
-            Composio doesn't host a managed OAuth app for this toolkit, so you have to bring your
-            own. One-time setup (takes a few minutes): create an OAuth app on the toolkit's
-            developer portal, then register it as an Auth Config in Composio's dashboard. After
-            that, come back here and click Connect.
+            Boop needs to finish enabling this app. You do not need to create a developer account
+            or configure Composio. Please try again once Boop has enabled the connection.
           </div>
           <div className="flex items-center gap-3">
-            <a
-              href={needsAuthConfig.setupUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs underline text-amber-700 dark:text-amber-300"
-            >
-              Open Composio Auth Configs →
-            </a>
             <button
               onClick={() => setNeedsAuthConfig(null)}
               className={`text-xs underline ${isDark ? "text-slate-400" : "text-slate-500"}`}
@@ -511,17 +473,7 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
 
       {data?.enabled === false ? (
         <div className={`rounded-xl border px-4 py-6 text-sm ${cardBg} ${muted}`}>
-          Add <code>COMPOSIO_API_KEY</code> to <code>.env.local</code> and restart the server to
-          connect integrations like Gmail, Slack, GitHub, Linear, Notion, and more. Get a key at{" "}
-          <a
-            href="https://app.composio.dev/developers?utm_source=chris&utm_medium=youtube&utm_campaign=collab"
-            target="_blank"
-            rel="noreferrer"
-            className="text-sky-500 underline"
-          >
-            app.composio.dev/developers
-          </a>
-          .
+          Connections are currently unavailable. Boop’s integration service needs to be enabled.
         </div>
       ) : !loaded ? (
         <div className="grid gap-3">
@@ -534,10 +486,14 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
           const result = catalog?.query === query ? catalog : null;
           const toolkits = query ? result?.toolkits ?? [] : data?.toolkits ?? [];
           const pending = Boolean(query) && (searching || (!result && !searchError));
+          const connected = toolkits.filter(hasActive).sort((a, b) =>
+            a.displayName.localeCompare(b.displayName),
+          );
           const needsSetup = toolkits.filter(
             (t) => !hasActive(t) && t.authMode === "byo" && !t.hasAuthConfig,
           );
-          const ready = toolkits.filter((t) => !needsSetup.includes(t));
+          const ready = toolkits.filter((t) => !hasActive(t) && !needsSetup.includes(t))
+            .sort((a, b) => Number(b.slug === "googlesuper") - Number(a.slug === "googlesuper"));
           return (
             <div className="space-y-6">
               <div>
@@ -591,10 +547,34 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
                   {query ? "No apps match your search. Try another app name." : "No apps available."}
                 </div>
               )}
+              {connected.length > 0 && (
+                <SubsectionGrid
+                  label="Connected apps"
+                  hint="Your connected accounts, all in one place"
+                  isDark={isDark}
+                >
+                  {connected.map((t) => (
+                    <ToolkitCard
+                      key={t.slug}
+                      t={t}
+                      busy={busy}
+                      cardBg={cardBg}
+                      muted={muted}
+                      isDark={isDark}
+                      expanded={!!expanded[t.slug]}
+                      tools={toolsBySlug[t.slug]}
+                      onConnect={connect}
+                      onDisconnect={disconnect}
+                      onRename={rename}
+                      onToggleTools={toggleTools}
+                    />
+                  ))}
+                </SubsectionGrid>
+              )}
               {ready.length > 0 && (
                 <SubsectionGrid
                   label="Ready to connect"
-                  hint="Composio-managed OAuth — click Connect"
+                  hint="Authorize your account to let Boop use this app"
                   isDark={isDark}
                 >
                   {ready.map((t) => (
@@ -617,8 +597,8 @@ export function ComposioSection({ isDark }: { isDark: boolean }) {
               )}
               {needsSetup.length > 0 && (
                 <SubsectionGrid
-                  label="Needs one-time auth config"
-                  hint="Requires your own credentials or authentication setup"
+                  label="Coming soon"
+                  hint="Boop must enable these apps before users can connect"
                   isDark={isDark}
                 >
                   {needsSetup.map((t) => (
@@ -700,14 +680,14 @@ function ToolkitCard({
             >
               {t.displayName}
             </span>
-            <span className={`text-xs mono ${muted}`}>{t.slug}</span>
+            {t.slug === "googlesuper" && <span className="text-[10px] text-emerald-600 font-medium">One Google connection</span>}
             {t.authMode === "byo" && t.hasAuthConfig && !hasConnections && (
               <span
                 className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                   isDark ? "bg-sky-400/10 text-sky-400" : "bg-sky-50 text-sky-700"
                 }`}
               >
-                BYO — configured
+                Ready to connect
               </span>
             )}
             {t.toolCount != null && t.toolCount > 0 && (
@@ -726,7 +706,7 @@ function ToolkitCard({
           )}
           {!hasConnections && (
             <span className={`text-xs ${muted}`}>
-              {needsSetup ? "Auth config required" : "Not connected"}
+              {needsSetup ? "Not available yet" : "Not connected"}
             </span>
           )}
         </div>
@@ -747,7 +727,7 @@ function ToolkitCard({
               isDark ? "bg-amber-400/10 text-amber-400" : "bg-amber-50 text-amber-700"
             }`}
           >
-            Setup needed
+            Coming soon
           </span>
         )}
       </div>
@@ -791,51 +771,57 @@ function ToolkitCard({
 }
 
 function TelegramChat({ connectionId }: { connectionId: string }) {
-  const [verified, setVerified] = useState(false);
-  const [url, setUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<{
+    enabled: boolean; verified: boolean; url: string | null; greetingPending: boolean;
+    pending: Array<{ requestId: string; senderId: string; username?: string; firstName?: string }>;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   useEffect(() => {
     let stopped = false;
+    setStatus(null); setError(null);
     const check = async () => {
       try {
         const response = await apiFetch(`/api/composio/connections/${encodeURIComponent(connectionId)}/telegram-chat`);
-        if (!response.ok) return;
         const result = await response.json();
-        if (!stopped) setVerified(result.verified === true);
-      } catch { /* The action below offers a retry. */ }
+        if (!response.ok) throw new Error(result.error || "Unable to load Telegram chat.");
+        if (!stopped) { setStatus(result); setError(null); }
+      } catch (err) {
+        if (!stopped) setError(err instanceof Error ? err.message : "Unable to load Telegram chat.");
+      }
     };
     void check();
     const timer = setInterval(() => void check(), 5000);
     return () => { stopped = true; clearInterval(timer); };
   }, [connectionId]);
-  const begin = async () => {
-    setBusy(true); setError(null); setUrl(null);
+  const confirm = async (requestId: string) => {
+    setBusy(true); setError(null);
     try {
-      const response = await apiFetch(`/api/composio/connections/${encodeURIComponent(connectionId)}/telegram-chat`, { method: "POST" });
+      const response = await apiFetch(`/api/composio/connections/${encodeURIComponent(connectionId)}/telegram-chat/confirm`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId }),
+      });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      setUrl(result.url);
-    } catch (err) { setError(err instanceof Error ? err.message : "Unable to start Telegram chat."); }
+      setStatus(previous => previous ? { ...previous, verified: true, pending: [], greetingPending: true } : previous);
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to confirm Telegram chat."); }
     finally { setBusy(false); }
   };
   return <div className="px-2.5 py-3 text-xs space-y-2">
-    {verified ? <p role="status" className="text-emerald-500">Telegram chat verified. Message this bot to talk to your own Boop agent.</p>
+    {!status ? <p>Preparing Telegram chat…</p> : !status.enabled ? <p>Telegram chat is disabled on this server.</p>
+      : status.verified ? <p role="status" className="text-emerald-500">Telegram connected. {status.greetingPending ? "Boop will send your greeting shortly." : "Message your bot to talk to your own Boop agent."}</p>
       : <>
-        <p>Verify your Telegram chat to receive replies from your Boop agent.</p>
-        <button onClick={() => void begin()} disabled={busy} className="text-sky-500 underline disabled:opacity-50">
-          {busy ? "Preparing…" : url ? "Generate a new chat link" : "Chat with Boop"}
-        </button>
-        {url && <div className="space-y-2"><a href={url} target="_blank" rel="noreferrer" className="text-sky-500 underline">Open @{new URL(url).pathname.slice(1)} in Telegram and press Start</a>
-          <p>This private verification link expires in 10 minutes. Boop will send a greeting after verification.</p>
-          <p>Using Telegram Web? Copy this command and send it to @{new URL(url).pathname.slice(1)}:</p>
-          <code className="block break-all select-all rounded border p-2">/start {new URL(url).searchParams.get("start")}</code>
-          <button className="text-sky-500 underline" onClick={async () => {
-            try { await navigator.clipboard.writeText(`/start ${new URL(url).searchParams.get("start")}`); setCopied(true); }
-            catch { setError("Select and copy the command above, then paste it into Telegram."); }
-          }}>{copied ? "Command copied" : "Copy verification command"}</button>
-        </div>}
+        <p>Open your bot and send <code>/start</code>. Then confirm your Telegram account here once.</p>
+        {status.url && <a href={status.url} target="_blank" rel="noreferrer" className="text-sky-500 underline">Open Telegram</a>}
+        {status.pending.length === 0 ? <p role="status">Waiting for your /start message…</p> : <>
+          <p>Approve only the account you just used. Names and usernames alone do not prove identity. Requests expire in 10 minutes.</p>
+          {status.pending.map(candidate => <div key={candidate.requestId} className="rounded border p-2 space-y-1">
+            <p>{candidate.firstName || "Telegram user"}{candidate.username ? ` (@${candidate.username})` : ""}</p>
+            <p>Telegram user ID: {candidate.senderId}</p>
+            <button onClick={() => void confirm(candidate.requestId)} disabled={busy} className="text-sky-500 underline disabled:opacity-50">
+              {busy ? "Confirming…" : "This is me"}
+            </button>
+          </div>)}
+        </>}
       </>}
     {error && <p role="alert" className="text-rose-500">{error}</p>}
   </div>;
@@ -996,71 +982,23 @@ function ConnectionRow({
   );
 }
 
-function ByoSetupSteps({
-  slug,
-  isDark,
-  muted,
-  onConnect,
-}: {
+function ByoSetupSteps({ slug, muted, onConnect }: {
   slug: string;
   isDark: boolean;
   muted: string;
   onConnect: (slug: string) => void;
 }) {
-  const portal = BYO_PORTALS[slug];
-  const wrapClass = `mt-3 pt-3 border-t ${isDark ? "border-slate-800" : "border-slate-200"}`;
-  const linkClass = isDark
-    ? "text-sky-400 hover:text-sky-300 underline"
-    : "text-sky-600 hover:text-sky-700 underline";
-  const stepNumberClass = `inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-semibold mr-2 shrink-0 ${
-    isDark ? "bg-amber-400/15 text-amber-300" : "bg-amber-100 text-amber-800"
-  }`;
   return (
-    <div className={wrapClass}>
-      <div className={`text-[11px] font-medium mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-        One-time setup (~5 min):
-      </div>
-      <ol className="space-y-1.5">
-        <li className={`text-xs flex items-start ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-          <span className={stepNumberClass}>1</span>
-          <span className="leading-snug">
-            {portal ? (
-              <>
-                Register an OAuth app at{" "}
-                <a href={portal.url} target="_blank" rel="noreferrer" className={linkClass}>
-                  {portal.label} ↗
-                </a>
-                {portal.note && <span className={`block text-[11px] mt-0.5 ${muted}`}>{portal.note}</span>}
-              </>
-            ) : (
-              <>Open this app in Composio and follow its authentication instructions. It may require an API key, bot token, or OAuth credentials.</>
-            )}
-          </span>
-        </li>
-        <li className={`text-xs flex items-start ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-          <span className={stepNumberClass}>2</span>
-          <span className="leading-snug">
-            In{" "}
-            <a href={COMPOSIO_DASHBOARD_URL} target="_blank" rel="noreferrer" className={linkClass}>
-              Composio Dashboard ↗
-            </a>
-            : Toolkits → search <span className="mono">{slug}</span> → Add to project → paste those credentials.
-          </span>
-        </li>
-        <li className={`text-xs flex items-start ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-          <span className={stepNumberClass}>3</span>
-          <span className="leading-snug">
-            Come back here and{" "}
-            <button
-              onClick={() => onConnect(slug)}
-              className={`${linkClass} bg-transparent p-0 border-0 cursor-pointer`}
-            >
-              click Connect
-            </button>{" "}
-            to finish connecting.
-          </span>
-        </li>
-      </ol>
+    <div className={`mt-3 pt-3 border-t text-xs ${muted}`}>
+      <p>Boop is preparing this connection. No developer setup is required from you.</p>
+      {slug === "googleforms" && (
+        <div className="mt-2">
+          <p>Google Workspace offers supported Google actions through one Google authorization. Some Forms actions may still need separate support.</p>
+          <button onClick={() => onConnect("googlesuper")} className="mt-2 text-sky-600 underline">
+            Connect Google Workspace
+          </button>
+        </div>
+      )}
     </div>
   );
 }

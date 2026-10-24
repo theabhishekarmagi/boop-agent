@@ -1,3 +1,6 @@
+import { createGmailPriorityTools } from "./gmail-priority.js";
+import { GOOGLE_WORKSPACE_SLUG, GOOGLE_WORKSPACE_NAME, GOOGLE_WORKSPACE_DESCRIPTION,
+  gmailToolForToolkit, isWorkspaceCustomAuth } from "./google-workspace.js";
 import { Composio } from "@composio/core";
 import { createHash } from "node:crypto";
 import { currentOwner, isOperator } from "./workspace-context.js";
@@ -21,6 +24,7 @@ export interface CuratedToolkit {
 // Hand-picked toolkits surfaced in the debug UI. Composio exposes 1000+ total,
 // but rendering them all is noisy. The UI searches the full catalog on demand.
 export const CURATED_TOOLKITS: CuratedToolkit[] = [
+  { slug: GOOGLE_WORKSPACE_SLUG, displayName: GOOGLE_WORKSPACE_NAME, authMode: "byo" },
   { slug: "gmail", displayName: "Gmail", authMode: "managed" },
   { slug: "googlecalendar", displayName: "Google Calendar", authMode: "managed" },
   { slug: "googledrive", displayName: "Google Drive", authMode: "managed" },
@@ -107,7 +111,9 @@ export interface ToolSummary {
 // The installed SDK's list method strips both search and pagination metadata.
 // Use the current catalog API for on-demand discovery, keeping the key server-side.
 export async function searchToolkitCatalog(search: string, cursor?: string) {
-  const params = new URLSearchParams({ search, limit: "20", sort_by: "alphabetically" });
+  const catalogSearch = /^(?:google\s+workspace|workspace|g\s?suite)$/i.test(search.trim())
+    ? GOOGLE_WORKSPACE_SLUG : search;
+  const params = new URLSearchParams({ search: catalogSearch, limit: "20", sort_by: "alphabetically" });
   if (cursor) params.set("cursor", cursor);
   const response = await fetch(`https://backend.composio.dev/api/v3.1/toolkits?${params}`, {
     headers: { "x-api-key": process.env.COMPOSIO_API_KEY ?? "" },
@@ -133,10 +139,10 @@ export async function searchToolkitCatalog(search: string, cursor?: string) {
   return {
     items: page.items.map((t) => ({
       slug: t.slug,
-      displayName: t.name,
-      authMode: (t.composio_managed_auth_schemes?.length ? "managed" : "byo") as ToolkitAuthMode,
+      displayName: t.slug === GOOGLE_WORKSPACE_SLUG ? GOOGLE_WORKSPACE_NAME : t.name,
+      authMode: (t.slug !== GOOGLE_WORKSPACE_SLUG && t.composio_managed_auth_schemes?.length ? "managed" : "byo") as ToolkitAuthMode,
       logoUrl: t.meta?.logo ?? null,
-      description: t.meta?.description ?? null,
+      description: t.slug === GOOGLE_WORKSPACE_SLUG ? GOOGLE_WORKSPACE_DESCRIPTION : t.meta?.description ?? null,
       toolCount: t.meta?.tools_count ?? null,
     })),
     nextCursor: page.next_cursor ?? null,
@@ -232,7 +238,13 @@ export async function listToolkitSlugsWithAuthConfig(): Promise<Set<string>> {
   if (!composio) return new Set();
   try {
     const resp = await composio.authConfigs.list({ limit: 200 });
-    return new Set(resp.items.map((it) => it.toolkit.slug));
+    const configured = new Set(resp.items.filter(it => it.toolkit.slug !== GOOGLE_WORKSPACE_SLUG).map(it => it.toolkit.slug));
+    const id = process.env.COMPOSIO_GOOGLE_WORKSPACE_AUTH_CONFIG_ID;
+    if (id) {
+      const config = resp.items.find(it => it.id === id) ?? await composio.authConfigs.get(id);
+      if (isWorkspaceCustomAuth(config)) configured.add(GOOGLE_WORKSPACE_SLUG);
+    }
+    return configured;
   } catch (err) {
     console.error("[composio] listToolkitSlugsWithAuthConfig failed", err);
     return new Set();
@@ -295,6 +307,14 @@ function genericProfileParse(d: Record<string, unknown>): Partial<AccountIdentit
 }
 
 const WHOAMI_BY_TOOLKIT: Record<string, WhoAmITool> = {
+  googlesuper: {
+    tool: "GOOGLESUPER_GET_PROFILE",
+    arguments: { user_id: "me" },
+    parse: (d) => {
+      const email = typeof d.emailAddress === "string" ? d.emailAddress : undefined;
+      return { email, label: email };
+    },
+  },
   gmail: {
     tool: "GMAIL_GET_PROFILE",
     arguments: { user_id: "me" },
@@ -499,12 +519,20 @@ export class ComposioNeedsAuthConfigError extends Error {
     public readonly underlying: string,
   ) {
     super(
-      `Toolkit "${slug}" needs an auth config — Composio doesn't host a managed OAuth app for it. ` +
-        `Add it via the Composio Dashboard: Toolkits → search ${slug} → Add to project → paste your OAuth credentials. ` +
-        `https://dashboard.composio.dev`,
+      `This connection is not available yet. Boop must finish configuring ${displayNameFor(slug)} before you can connect.`,
     );
     this.name = "ComposioNeedsAuthConfigError";
   }
+}
+
+/** Use Boop's own OAuth app: managed Google Super currently blocks broad scopes. */
+export async function requireGoogleWorkspaceAuthConfig(): Promise<string> {
+  const composio = getComposio();
+  const id = process.env.COMPOSIO_GOOGLE_WORKSPACE_AUTH_CONFIG_ID?.trim();
+  if (!composio || !id) throw new ComposioNeedsAuthConfigError(GOOGLE_WORKSPACE_SLUG, "Custom Google OAuth must be configured by Boop.");
+  const config = await composio.authConfigs.get(id);
+  if (!isWorkspaceCustomAuth(config)) throw new ComposioNeedsAuthConfigError(GOOGLE_WORKSPACE_SLUG, "Expected an enabled custom Google Super OAuth2 config.");
+  return config.id;
 }
 
 export async function authorizeToolkit(
@@ -520,25 +548,28 @@ export async function authorizeToolkit(
   //    the dashboard would still trip "require auth configs but none exist" on
   //    the previous session.authorize-based code path.
   let authConfigId: string;
-  const existingConfig = (await composio.authConfigs.list({ toolkit: slug })).items[0];
-  if (existingConfig) {
-    authConfigId = existingConfig.id;
+  if (slug === GOOGLE_WORKSPACE_SLUG) {
+    authConfigId = await requireGoogleWorkspaceAuthConfig();
   } else {
-    try {
-      const created = await composio.authConfigs.create(slug, {
-        type: "use_composio_managed_auth",
-        name: `${displayNameFor(slug)} Auth Config`,
-      });
-      authConfigId = created.id;
-    } catch (err) {
-      // 400 here means Composio doesn't host a managed OAuth app for this toolkit —
-      // user has to register their own at the toolkit's dev portal and add it via
-      // the Composio Dashboard (Toolkits → search → Add to project).
-      const status = (err as { status?: number })?.status;
-      if (status === 400) {
-        throw new ComposioNeedsAuthConfigError(slug, String(err));
+    const configs = (await composio.authConfigs.list({ toolkit: slug })).items;
+    const existingConfig = configs[0];
+    if (existingConfig) {
+      authConfigId = existingConfig.id;
+    } else {
+      try {
+        const created = await composio.authConfigs.create(slug, {
+          type: "use_composio_managed_auth",
+          name: `${displayNameFor(slug)} Auth Config`,
+        });
+        authConfigId = created.id;
+      } catch (err) {
+        // Provider/project setup is an operator responsibility, never a customer task.
+        const status = (err as { status?: number })?.status;
+        if (status === 400) {
+          throw new ComposioNeedsAuthConfigError(slug, String(err));
+        }
+        throw err;
       }
-      throw err;
     }
   }
 
@@ -576,7 +607,7 @@ export function buildComposioIntegrationModule(slug: string): IntegrationModule 
     name: slug,
     description: `${displayNameFor(slug)} (via Composio)`,
     requiredEnv: ["COMPOSIO_API_KEY"],
-    createServer: async (): Promise<ToolGroup> => {
+    createServer: async (context): Promise<ToolGroup> => {
       const composio = getComposio();
       if (!composio) {
         throw new Error(`[composio] cannot build ${slug} — COMPOSIO_API_KEY not set`);
@@ -584,14 +615,33 @@ export function buildComposioIntegrationModule(slug: string): IntegrationModule 
       // If the user has 2+ active connections for this toolkit, force Composio to
       // require explicit account selection per tool call — otherwise it silently
       // picks the default account.
-      const activeCount = (await listConnectedToolkits()).filter(
-        (c) => c.slug === slug && c.status === "ACTIVE",
-      ).length;
+      const activeAccounts = (await listConnectedToolkits()).filter(c => c.slug === slug && c.status === "ACTIVE");
+      const activeCount = activeAccounts.length;
       // Look up the auth config explicitly. Without this, composio.create() tries
       // to auto-create one and 400s for BYO toolkits (Twitter etc.) that don't
       // have a managed OAuth app available — error message even names the fix:
       // "Please specify them in auth_configs."
-      const authConfig = (await composio.authConfigs.list({ toolkit: slug })).items[0];
+      const authConfig = slug === GOOGLE_WORKSPACE_SLUG
+        ? {id: await requireGoogleWorkspaceAuthConfig()}
+        : (await composio.authConfigs.list({toolkit: slug})).items[0];
+      let priorityTools: ToolGroup["tools"] = [];
+      if (slug === "gmail" || slug === GOOGLE_WORKSPACE_SLUG) {
+        const pinned = new Map<string, ReturnType<typeof composio.create>>();
+        const priority = createGmailPriorityTools(activeAccounts.map(c => ({ id: c.connectionId,
+          label: c.alias || c.accountEmail || c.accountLabel || c.connectionId })), async (account, toolSlug, args) => {
+          let reading = pinned.get(account);
+          if (!reading) {
+            reading = composio.create(boopUserId(), { toolkits: [slug], manageConnections: false,
+              connectedAccounts: { [slug]: account }, ...(authConfig ? { authConfigs: { [slug]: authConfig.id } } : {}) });
+            pinned.set(account, reading);
+          }
+          return (await reading).execute(gmailToolForToolkit(slug, toolSlug), args);
+        });
+        priorityTools = priority.tools;
+      }
+      if ((slug === "gmail" || slug === GOOGLE_WORKSPACE_SLUG) && context.workflow === "gmail_priority") {
+        return createToolGroup({ name: slug, tools: priorityTools });
+      }
       const session = await composio.create(boopUserId(), {
         toolkits: [slug],
         manageConnections: false,
@@ -600,7 +650,7 @@ export function buildComposioIntegrationModule(slug: string): IntegrationModule 
           ? { multiAccount: { enable: true, requireExplicitSelection: true } }
           : {}),
       });
-      const tools = await session.tools();
+      const tools = [...await session.tools(), ...priorityTools];
       return createToolGroup({
         name: slug,
         version: "0.1.0",

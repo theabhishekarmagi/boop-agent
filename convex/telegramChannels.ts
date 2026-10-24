@@ -21,7 +21,7 @@ export const get = query({
 });
 
 export const begin = mutation({
-  args: { connectionId: v.string(), botId: v.string(), botUsername: v.string(), tokenHash: v.string() },
+  args: { connectionId: v.string(), botId: v.string(), botUsername: v.string(), tokenHash: v.optional(v.string()) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await workerOwner(ctx);
@@ -33,7 +33,7 @@ export const begin = mutation({
       q.eq("ownerId", ownerId).eq("connectionId", args.connectionId)).unique();
     const value = { ...args, ownerId, expiresAt: Date.now() + 10 * 60_000, updatedAt: Date.now() };
     if (existing) await ctx.db.patch(existing._id, { ...value,
-      ...(existing.botId !== args.botId ? { chatId: undefined, senderId: undefined } : {}),
+      ...(existing.botId !== args.botId ? { chatId: undefined, senderId: undefined, pendingChats: undefined, greetingPending: undefined } : {}),
     });
     else await ctx.db.insert("telegramChannels", value);
     return null;
@@ -61,6 +61,54 @@ export const remove = mutation({
     const row = await ctx.db.query("telegramChannels").withIndex("by_ownerId_and_connectionId", q =>
       q.eq("ownerId", ownerId).eq("connectionId", args.connectionId)).unique();
     if (row) await ctx.db.delete(row._id);
+    return null;
+  },
+});
+
+// Only the trusted runtime can collect candidates or approve a dashboard action.
+export const requestChat = mutation({
+  args: { connectionId: v.string(), requestId: v.string(), chatId: v.string(), senderId: v.string(),
+    username: v.optional(v.string()), firstName: v.optional(v.string()) },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const owner = await workerOwner(ctx);
+    const row = await ctx.db.query("telegramChannels").withIndex("by_ownerId_and_connectionId", q =>
+      q.eq("ownerId", owner).eq("connectionId", args.connectionId)).unique();
+    if (!row || row.chatId || args.chatId !== args.senderId || !/^[1-9]\d*$/.test(args.senderId)) return false;
+    const now = Date.now();
+    const pending = (row.pendingChats ?? []).filter(p => p.expiresAt > now);
+    // Repeated /start must not replace an approval ID the dashboard is showing.
+    if (pending.some(p => p.senderId === args.senderId)) return true;
+    if (pending.length >= 10) return false;
+    const { connectionId: _, ...candidate } = args;
+    await ctx.db.patch(row._id, { pendingChats: [...pending, { ...candidate, expiresAt: now + 600_000 }], updatedAt: now });
+    return true;
+  },
+});
+
+export const confirmChat = mutation({
+  args: { connectionId: v.string(), requestId: v.string() }, returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const owner = await workerOwner(ctx);
+    const row = await ctx.db.query("telegramChannels").withIndex("by_ownerId_and_connectionId", q =>
+      q.eq("ownerId", owner).eq("connectionId", args.connectionId)).unique();
+    if (!row || row.chatId) return false;
+    const candidate = row.pendingChats?.find(p => p.requestId === args.requestId && p.expiresAt > Date.now());
+    if (!candidate) return false;
+    await ctx.db.patch(row._id, { chatId: candidate.chatId, senderId: candidate.senderId,
+      pendingChats: undefined, tokenHash: undefined, expiresAt: undefined,
+      greetingPending: candidate.requestId, updatedAt: Date.now() });
+    return true;
+  },
+});
+
+export const acknowledgeGreeting = mutation({
+  args: { connectionId: v.string(), requestId: v.string() }, returns: v.null(),
+  handler: async (ctx, args) => {
+    const owner = await workerOwner(ctx);
+    const row = await ctx.db.query("telegramChannels").withIndex("by_ownerId_and_connectionId", q =>
+      q.eq("ownerId", owner).eq("connectionId", args.connectionId)).unique();
+    if (row?.greetingPending === args.requestId) await ctx.db.patch(row._id, { greetingPending: undefined });
     return null;
   },
 });

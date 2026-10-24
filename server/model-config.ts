@@ -24,3 +24,9 @@ export function mainModel(): string {
 export function smallModel(): string {
   return resolveModelInput(process.env.BOOP_SMALL_MODEL ?? "") ?? DEFAULT_SMALL_MODEL;
 }
+
+/** The bounded read-only overview uses the installation's fast-model setting. */
+export async function modelForExecution(workflow: "general" | "gmail_priority" | undefined,
+  normalModel: () => Promise<string>): Promise<string> {
+  return workflow === "gmail_priority" ? smallModel() : normalModel();
+}

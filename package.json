@@ -25,7 +25,12 @@
     "smoke:openai": "tsx scripts/smoke-openai.ts",
     "setup:google-auth": "node scripts/setup-google-auth.mjs",
     "setup:workspaces": "node scripts/setup-workspaces.mjs",
-    "test:workspaces": "vitest run"
+    "test:workspaces": "vitest run",
+    "setup:browser": "node scripts/setup-browser-use.mjs",
+    "smoke:browser": "tsx scripts/smoke-browser-use.ts",
+    "research:browser": "tsx scripts/research-browser-use.ts",
+    "test:browser": "tsx scripts/qualify-browser-use.ts",
+    "smoke:gmail-priority": "tsx scripts/smoke-gmail-priority.ts"
   },
   "dependencies": {
     "@composio/core": "^0.22.0",
@@ -73,6 +78,6 @@
     "vitest": "^4.1.12"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.18.0"
   }
 }

@@ -1,0 +1,57 @@
+.public-site {
+  box-sizing: border-box;
+  min-height: 100svh;
+  background: #fff;
+  color: #252823;
+  display: flex;
+  flex-direction: column;
+  padding: 46px 52px 30px;
+  -webkit-font-smoothing: antialiased;
+}
+.public-site *, .public-site *::before, .public-site *::after { box-sizing: border-box; }
+.public-site a { color: inherit; text-underline-offset: 5px; text-decoration-thickness: 1px; }
+.public-site a:focus-visible { outline: 2px solid #40694d; outline-offset: 7px; border-radius: 2px; }
+.public-header { display: flex; align-items: center; justify-content: space-between; }
+.public-brand { display: inline-block; line-height: 0; }
+.public-brand img { width: 76px; height: 86px; object-fit: contain; image-rendering: pixelated; }
+.public-skip { position: absolute; left: 20px; top: -100px; background: white; padding: 12px; z-index: 10; }
+.public-skip:focus { top: 12px; }
+.public-intro { max-width: 1060px; padding: 72px 0 96px; }
+.public-intro h1, .public-intro p {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(27px, 3vw, 42px);
+  font-weight: 400;
+  letter-spacing: -1.15px;
+  line-height: 1.32;
+  margin: 0 0 44px;
+}
+.public-intro h1 { font-weight: 500; }
+.public-intro p a { text-decoration-color: #d0d3ce; transition: text-decoration-color .15s; }
+.public-intro p a:hover { text-decoration-color: #40694d; }
+.public-start { font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 3vw, 39px); font-weight: 500; text-decoration-color: #e0dfd3; text-decoration-thickness: 7px !important; text-underline-offset: 0 !important; }
+.public-start span { display: inline-block; font-family: system-ui, sans-serif; font-size: .75em; padding-left: 9px; }
+.public-start:hover { color: #40694d; }
+.public-footer { margin-top: auto; display: flex; flex-wrap: wrap; gap: 18px 34px; align-items: center; font: 15px/1.6 system-ui, sans-serif; color: #41483e; }
+.public-footer nav { display: flex; flex-wrap: wrap; gap: 26px; }
+.public-footer a, .public-back { text-decoration: none; }
+.public-footer a:hover, .public-back:hover { text-decoration: underline; }
+.public-back { font: 14px/1.5 system-ui, sans-serif; }
+.public-document { width: 100%; max-width: 760px; margin: 70px auto 90px; font: 17px/1.8 system-ui, sans-serif; color: #444b43; }
+.public-document-heading { margin-bottom: 42px; }
+.public-document h1 { font: 400 clamp(39px, 5vw, 60px)/1.1 Georgia, "Times New Roman", serif; color: #252823; letter-spacing: -1.5px; margin: 14px 0 20px; }
+.public-document h2 { font: 400 29px/1.25 Georgia, "Times New Roman", serif; color: #252823; margin: 42px 0 15px; letter-spacing: -.5px; }
+.public-document p { margin: 0 0 18px; }
+.public-document a { overflow-wrap: anywhere; }
+.public-document .public-date { font-size: 14px; color: #72786d; }
+.public-document .public-eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 1.8px; color: #72786d; }
+@media (min-width: 1600px) { .public-site { padding-left: 64px; padding-right: 64px; } .public-intro { padding-top: 96px; max-width: 1200px; } }
+@media (max-width: 600px) {
+  .public-site { padding: 28px 24px 24px; }
+  .public-brand img { width: 56px; height: 66px; }
+  .public-intro { padding: 54px 0 74px; }
+  .public-intro h1, .public-intro p { margin-bottom: 30px; letter-spacing: -.65px; line-height: 1.36; }
+  .public-footer { font-size: 13px; gap: 13px 24px; }
+  .public-footer nav { gap: 20px; }
+  .public-document { margin-top: 48px; font-size: 16px; }
+  .public-document h2 { font-size: 26px; }
+}

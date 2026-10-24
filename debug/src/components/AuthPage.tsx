@@ -226,6 +226,11 @@ export function AuthPage({
             )}
           </div>
         )}
+        <nav className="auth-legal" aria-label="About Boop">
+          <a href="/">Home</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+        </nav>
       </section>
     </main>
   );

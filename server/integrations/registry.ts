@@ -10,10 +10,12 @@ export interface IntegrationModule {
 
 export interface IntegrationContext {
   conversationId?: string;
+  workflow?: "general" | "gmail_priority";
 }
 
 const registries = new Map<string, Map<string, IntegrationModule>>();
 const loadedAt = new Map<string, number>();
+const refreshing = new Map<string, Promise<void>>();
 function registry(): Map<string, IntegrationModule> {
   const owner = currentOwner();
   let map = registries.get(owner);
@@ -44,37 +46,56 @@ export async function loadIntegrations(): Promise<void> {
 }
 
 export async function ensureIntegrations(): Promise<void> {
+  const inFlight = refreshing.get(currentOwner());
+  if (inFlight) return inFlight;
   if (Date.now() - (loadedAt.get(currentOwner()) ?? 0) > 60_000) {
     await refreshIntegrations();
   }
 }
 
 export async function refreshIntegrations(): Promise<void> {
-  registry().clear();
-  await loadIntegrations();
+  const owner = currentOwner();
+  const existing = refreshing.get(owner);
+  if (existing) return existing;
+  const work = (async () => {
+    const previous = new Map(registry());
+    registry().clear();
+    try { await loadIntegrations(); }
+    catch (error) {
+      registries.set(owner, previous);
+      throw error;
+    }
+  })();
+  refreshing.set(owner, work);
+  try { await work; }
+  finally { if (refreshing.get(owner) === work) refreshing.delete(owner); }
 }
 
-export function makeContext(conversationId?: string): IntegrationContext {
-  return { conversationId };
+export function makeContext(conversationId?: string, workflow?: IntegrationContext["workflow"]): IntegrationContext {
+  return { conversationId, workflow };
 }
 
 export async function buildMcpServersForIntegrations(
   names: string[],
   conversationId?: string,
+  workflow?: IntegrationContext["workflow"],
 ): Promise<Record<string, ToolGroup>> {
-  const ctx = makeContext(conversationId);
+  const ctx = makeContext(conversationId, workflow);
   const out: Record<string, ToolGroup> = {};
-  for (const name of names) {
+  // Independent integration sessions need not add their setup latency serially.
+  const entries = await Promise.all([...new Set(names)].map(async name => {
     const mod = registry().get(name);
     if (!mod) {
       console.warn(`[integrations] unknown integration: ${name}`);
-      continue;
+      return undefined;
     }
-    try {
-      out[name] = await mod.createServer(ctx);
-    } catch (err) {
-      console.error(`[integrations] failed to build ${name}`, err);
+    try { return [name, await mod.createServer(ctx)] as const; }
+    catch {
+      // Upstream SDK errors may carry credential-bearing request details.
+      console.warn(`[integrations] failed to build ${name}`);
+      return undefined;
     }
-  }
+  }));
+  for (const entry of entries) if (entry) out[entry[0]] = entry[1];
   return out;
 }

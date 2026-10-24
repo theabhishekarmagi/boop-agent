@@ -15,6 +15,7 @@ export async function verifyBrowserToken(token: string): Promise<string> {
   const allowedEmails = (process.env.BOOP_ALLOWED_EMAILS ?? "")
     .split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
   if (process.env.BOOP_HOSTED_PREVIEW === "true" &&
+      process.env.BOOP_ALLOW_PUBLIC_SIGNUPS !== "true" &&
       !allowedEmails.includes(profile.email.toLowerCase())) {
     throw new Error("This hosted preview is invitation-only");
   }

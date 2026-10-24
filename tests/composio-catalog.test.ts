@@ -43,3 +43,18 @@ test("catalog failure is not returned as an empty successful search", async () =
     globalThis.fetch = original;
   }
 });
+
+test("Google Workspace search resolves the native unified toolkit instead of hiding it", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async input => {
+    assert.equal(new URL(String(input)).searchParams.get("search"),"googlesuper");
+    return Response.json({items:[{slug:"googlesuper",name:"Google Super",
+      composio_managed_auth_schemes:["OAUTH2"]}]});
+  };
+  try {
+    const result = await searchToolkitCatalog("Google Workspace");
+    assert.equal(result.items[0].displayName,"Google Workspace");
+    assert.equal(result.items[0].authMode,"byo");
+    assert.match(result.items[0].description!,/Gmail, Calendar, Tasks/);
+  } finally { globalThis.fetch = original; }
+});

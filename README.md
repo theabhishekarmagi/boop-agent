@@ -592,3 +592,8 @@ Every release lists additions under [CHANGELOG.md](./CHANGELOG.md), with `[BREAK
 ## License
 
 MIT. Build whatever you want on top of this.
+
+## Optional local browser research
+
+Boop uses Browser Use for on-demand browser research. Setup, local-only configuration,
+verification commands and current limitations are in [docs/browser-use.md](docs/browser-use.md).

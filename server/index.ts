@@ -9,7 +9,7 @@ import { handleUserMessage } from "./interaction-agent.js";
 import { loadIntegrations } from "./integrations/registry.js";
 import { startCleanupLoop } from "./memory/clean.js";
 import { startAutomationLoop } from "./automations.js";
-import { startHeartbeatLoop } from "./heartbeat.js";
+import { startHeartbeatLoop, recoverTasksOnStartup } from "./heartbeat.js";
 import { startConsolidationLoop } from "./consolidation.js";
 import { cancelAgent, retryAgent } from "./execution-agent.js";
 import { createComposioRouter } from "./composio-routes.js";
@@ -29,9 +29,10 @@ async function main() {
     throw new Error("This main-based branch is a personal agent. Use a separate personal development environment with BOOP_PUBLIC_MODE=false; the public multi-user flow lives on stagging.");
   }
   if (process.env.BOOP_HOSTED_PREVIEW === "true" &&
-      (!process.env.BOOP_ALLOWED_EMAILS?.trim() || !process.env.CONVEX_URL?.startsWith("https://"))) {
-    throw new Error("Hosted preview requires BOOP_ALLOWED_EMAILS and an HTTPS Convex deployment");
+      ((!process.env.BOOP_ALLOWED_EMAILS?.trim() && process.env.BOOP_ALLOW_PUBLIC_SIGNUPS !== "true") || !process.env.CONVEX_URL?.startsWith("https://"))) {
+    throw new Error("Hosted preview requires an email allowlist or explicit public signups, and an HTTPS Convex deployment");
   }
+  await recoverTasksOnStartup();
   const whatsapp = await startTwilioWhatsApp({
     generate: (conversationId, content) => handleUserMessage({ conversationId, content }),
     record: async (conversationId, content) => {
@@ -84,9 +85,19 @@ async function main() {
   app.use(requireBrowserSession);
   app.use("/memory", createMemoryRouter());
 
-  app.post("/agents/:id/cancel", (req, res) => {
-    const ok = cancelAgent(req.params.id);
-    res.json({ ok });
+  app.post("/agents/:id/cancel", async (req, res) => {
+    try {
+      const agentId = req.params.id;
+      const agent = await convex.query(api.agents.get, { agentId });
+      if (!agent) { res.status(404).json({ error: "Task not found" }); return; }
+      if (agent.status === "running" || agent.status === "spawned") {
+        cancelAgent(agentId);
+        // Also settle orphaned records left by a local process restart.
+        await convex.mutation(api.agents.update, { agentId, status: "cancelled", error: "Stopped by user." });
+        broadcast("agent_done", { agentId, status: "cancelled" });
+      }
+      res.json({ ok: true });
+    } catch { res.status(500).json({ error: "Unable to cancel task" }); }
   });
 
   app.post("/consolidate", async (_req, res) => {
