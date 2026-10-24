@@ -22,10 +22,12 @@ The Google-data commitments must also be honored by provider configurations.
 Do not claim a fixed deletion deadline, certification, Google approval, or
 universal tool coverage on the basis of these pages.
 
-These pages are implemented locally. Publishing them requires deploying the
-frontend build to the existing AWS web service; they are not live on the public
-Quick Tunnel merely because their local routes exist. Keep the tunnel running
-when updating only the web container, so its temporary hostname does not change.
+Deployed to the existing AWS services on 2026-10-24 in release `4336f91`:
+https://deposit-primary-pottery-picnic.trycloudflare.com/ (and `/privacy`, `/terms`).
+All three public pages were checked in the browser; the support links use
+`hello.peshi@gmail.com`. Public routes and health return HTTP 200; anonymous
+integration API requests still return HTTP 401. The existing tunnel was preserved.
+Keep the tunnel running during future web updates so its temporary hostname does not change.
 Use a domain the operator owns and can verify for Google production verification.
 
 References consulted when drafting Google data disclosures:

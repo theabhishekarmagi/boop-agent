@@ -84,8 +84,9 @@ prove the integration transport and current account permissions, not every
 possible Workspace action or a full conversational agent run.
 
 OAuth client credentials are stored only under ignored `data/google-workspace/`
-with private file permissions. This configuration and UI have not been deployed
-to AWS yet.
+with private file permissions. The custom auth config ID and updated UI/agent
+were deployed to AWS in release `4336f91` on 2026-10-24. Google verification
+remains separate from deployment and is still required for public availability.
 
 The live catalog confirmed the unified toolkit and matching email read schemas.
 The managed OAuth attempt reproduced the documented Google provider block. Regression coverage is in `tests/google-workspace.test.ts` and the
@@ -94,8 +95,8 @@ existing Gmail/catalog/workspace tests. Run `npm test`, `npm run typecheck`, and
 
 A configured custom OAuth app and unit tests alone do not prove a real customer
 connection; the live calls above supply that proof for the tested account.
-The next rollout step is deploying the updated UI and agent code with the custom
-auth config ID to AWS. Do not automatically remove
+The updated UI and agent code now use the custom auth config ID on AWS.
+Do not automatically remove
 or replace a customer's existing connections during migration.
 
 Sources:
