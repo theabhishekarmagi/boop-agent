@@ -87,6 +87,12 @@ a general-purpose public browser. Size the host for the additional 1.5 GiB brows
 limit before enabling it; measure actual RAM under load. The deployment overlay
 has to be validated on the target Docker host before activation.
 
+On the existing 4 GB Lightsail test host, a 4 GB swap file provides headroom
+alongside the resident embedding model. This uses existing disk, not another
+AWS service; monitor memory and latency before increasing browser concurrency.
+Chromium starts without a default window so Browser Use creates an allowed blank
+target, avoiding a distro new-tab/navigation-watchdog startup race.
+
 
 ## Live submission qualification (2026-10-25)
 

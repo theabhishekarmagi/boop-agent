@@ -77,6 +77,9 @@ async def main(request):
     # No existing user profile, no cookies, no downloaded files or browser secrets.
     with tempfile.TemporaryDirectory(prefix='boop-form-') as directory:
         browser=Browser(executable_path=os.environ.get('BOOP_FORM_CHROMIUM'),headless=True,use_cloud=False,is_local=True,
+            # Start on a permitted blank target: distro Chromium's default
+            # new-tab page can race the navigation watchdog during attachment.
+            args=['--no-startup-window'],
             user_data_dir=directory,enable_default_extensions=False,permissions=[],accept_downloads=False,auto_download_pdfs=False,
             chromium_sandbox=os.environ.get('BOOP_FORM_DOCKER')!='true',
             proxy={'server':os.environ['BOOP_FORM_PROXY']} if os.environ.get('BOOP_FORM_PROXY') else None,
