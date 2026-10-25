@@ -5,6 +5,8 @@ build/
 .env.local
 .env.*.local
 *.log
+__pycache__/
+*.pyc
 .DS_Store
 .convex/
 convex/_generated/
@@ -20,4 +22,5 @@ debug/dist/
 
 # Runtime deployment secrets
 deploy/aws/agent.env
+deploy/aws/form-browser.env
 deploy/aws/runtime-data/

@@ -206,9 +206,13 @@ export default defineSchema({
       v.literal("sent"),
       v.literal("rejected"),
       v.literal("expired"),
+      v.literal("submitting"),
+      v.literal("failed"),
+      v.literal("uncertain"),
     ),
     createdAt: v.number(),
     decidedAt: v.optional(v.number()),
+    submissionNote: v.optional(v.string()),
   }).index("by_owner", ["ownerId"])
     .index("by_owner_draft_id", ["ownerId", "draftId"])
     .index("by_owner_conversation_status", ["ownerId", "conversationId", "status"]),

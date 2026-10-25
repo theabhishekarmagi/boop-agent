@@ -30,7 +30,9 @@
     "smoke:browser": "tsx scripts/smoke-browser-use.ts",
     "research:browser": "tsx scripts/research-browser-use.ts",
     "test:browser": "tsx scripts/qualify-browser-use.ts",
-    "smoke:gmail-priority": "tsx scripts/smoke-gmail-priority.ts"
+    "smoke:gmail-priority": "tsx scripts/smoke-gmail-priority.ts",
+    "test:forms": "tsx scripts/qualify-google-forms.ts",
+    "smoke:forms": "tsx scripts/smoke-google-forms.ts"
   },
   "dependencies": {
     "@composio/core": "^0.22.0",

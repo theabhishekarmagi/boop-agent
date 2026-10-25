@@ -12,6 +12,7 @@ import { createDraftStagingMcp } from "./draft-tools.js";
 import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage.js";
 import { modelForExecution } from "./model-config.js";
 import { getRuntimeModel } from "./runtime-config.js";
+import { createGoogleFormTools, formBrowserEnabled } from "./google-forms.js";
 
 const running = new Map<string, { abort: AbortController; startedAt: number }>();
 const backgroundTasks = new TaskScheduler(3);
@@ -152,6 +153,8 @@ export async function spawnExecutionAgent(opts: SpawnOptions, prepared?: { agent
     const mcpServers = {
       ...integrationServers,
       ...(draftServer ? { "boop-drafts": draftServer } : {}),
+      ...(opts.conversationId && opts.workflow !== "gmail_priority" && formBrowserEnabled()
+        ? { "google-form-browser": createGoogleFormTools(opts.conversationId) } : {}),
     };
     const allowedTools = [
       "WebSearch",

@@ -1,0 +1,39 @@
+# Public Google Forms worker. No host ports, no app secrets, no runtime volume.
+# browser is on an internal network: all outbound traffic goes through the
+# Google-only proxy, which also denies private/link-local/metadata destinations.
+services:
+  agent:
+    environment:
+      BOOP_FORMS_ENABLED: "true"
+      BOOP_FORM_BROWSER_URL: http://browser:9000
+    networks: [default, forms]
+  browser:
+    build:
+      context: ../..
+      dockerfile: deploy/form-browser/Dockerfile
+    env_file: ./form-browser.env
+    environment:
+      BOOP_FORM_PROXY: http://browser-proxy:3128
+    networks: [forms]
+    read_only: true
+    tmpfs: ["/tmp:size=768m", "/dev/shm:size=256m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1536m
+    pids_limit: 256
+    restart: unless-stopped
+    init: true
+  browser-proxy:
+    build:
+      context: ../..
+      dockerfile: deploy/form-browser/Proxy.Dockerfile
+    networks: [forms, default]
+    read_only: true
+    tmpfs: ["/tmp:size=32m", "/var/spool/squid:size=16m,mode=1777", "/var/log/squid:size=16m,mode=1777", "/run:size=8m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    restart: unless-stopped
+networks:
+  forms:
+    internal: true

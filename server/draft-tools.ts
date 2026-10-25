@@ -3,6 +3,7 @@ import { z } from "zod";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 import { spawnExecutionAgent } from "./execution-agent.js";
+import { submitGoogleFormDraft } from "./google-forms.js";
 
 function randomId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -56,7 +57,7 @@ ALWAYS call this instead of sending or creating something directly. The user wil
 /**
  * Drafts MCP for the INTERACTION agent. Lets it review and approve drafts the user confirmed.
  */
-export function createDraftDecisionMcp(conversationId: string) {
+export function createDraftDecisionMcp(conversationId: string, humanMessage = "") {
   return createToolGroup({
     name: "boop-draft-decisions",
     version: "0.1.0",
@@ -94,6 +95,10 @@ export function createDraftDecisionMcp(conversationId: string) {
                 },
               ],
             };
+          }
+          if (draft.kind === "browser.googleform") {
+            const result=await submitGoogleFormDraft(args.draftId,conversationId,humanMessage);
+            return {content:[{type:"text" as const,text:JSON.stringify(result)}]};
           }
           await convex.mutation(api.drafts.setStatus, {
             draftId: args.draftId,
