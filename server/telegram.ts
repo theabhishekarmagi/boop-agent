@@ -187,7 +187,7 @@ export async function sendTelegramReply(conversationId: string, text: string): P
 
 export interface TelegramBatchDependencies {
   authorize?: (update: TelegramUpdate) => Promise<"message" | "linked" | "ignore">;
-  generate: (conversationId: string, text: string) => Promise<string>;
+  generate: (conversationId: string, text: string, updateId?: number) => Promise<string>;
   send: (chatId: number, text: string) => Promise<void>;
   record: (conversationId: string, reply: string) => Promise<void>;
   save: (state: State) => Promise<void>;
@@ -205,7 +205,7 @@ export async function processTelegramBatch(
     if (authorization !== "ignore" && message?.text) {
       const conversationId = `telegram:${connectionId}:${message.chat.id}`;
       if (state.pending?.updateId !== update.update_id) {
-        const reply = authorization === "linked" ? "Hi! Your Telegram is connected to your Boop agent. What can I help you with?" : await deps.generate(conversationId, message.text);
+        const reply = authorization === "linked" ? "Hi! Your Telegram is connected to your Boop agent. What can I help you with?" : await deps.generate(conversationId, message.text, update.update_id);
         state.pending = { updateId: update.update_id, reply, sentChunks: 0 };
         await deps.save(state);
       }
@@ -326,7 +326,8 @@ async function runWorker(connectionId: string, worker: { stopped: boolean }) {
       console.log(`[telegram] message ${decision === "ignore" ? "ignored: chat verification required" : decision === "linked" ? "verified" : "accepted"}`);
       return decision;
     },
-    generate: (conversationId, content) => handleUserMessage({ conversationId, content }),
+    generate: (conversationId, content, updateId) => handleUserMessage({ conversationId, content,
+      ...(updateId !== undefined ? { sourceEventId: `telegram:${connectionId}:${updateId}` } : {}) }),
     send: async (chatId, text) => {
       const sent = await execute(connectionId, "TELEGRAM_SEND_MESSAGE", { chat_id: chatId, text });
       console.log(`[telegram] reply delivered (log ${sent.logId})`);

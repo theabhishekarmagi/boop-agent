@@ -4,6 +4,7 @@ import { api } from "../convex/_generated/api.js";
 import { convex } from "./convex-client.js";
 import { spawnExecutionAgent } from "./execution-agent.js";
 import { submitGoogleFormDraft } from "./google-forms.js";
+import { createApprovedGoogleDoc, isGoogleDocDraft, parseGoogleDocPayload } from "./google-doc-drafts.js";
 
 function randomId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -14,6 +15,8 @@ function randomId(prefix: string): string {
  * performing it directly.
  */
 export function createDraftStagingMcp(conversationId: string) {
+  let savedGoogleDocDraftId: string | undefined;
+  let savingGoogleDoc: Promise<string | undefined> | undefined;
   return createToolGroup({
     name: "boop-drafts",
     version: "0.1.0",
@@ -24,7 +27,7 @@ export function createDraftStagingMcp(conversationId: string) {
 ALWAYS call this instead of sending or creating something directly. The user will say "send it" in the next turn to commit.
 
 - summary: one-line description the user will see.
-- payload: JSON string with everything needed to execute the draft (provider-specific fields).
+- payload: JSON string with everything needed to execute the draft (provider-specific fields). For a Google Doc, use kind gdocs.create and include the complete document as {"title":"...","markdown_text":"..."}; a preview or outline alone is not enough.
 - kind: short type tag like "gmail.reply", "gmail.new", "gcal.event", "slack.message".`,
         {
           kind: z.string(),
@@ -32,14 +35,32 @@ ALWAYS call this instead of sending or creating something directly. The user wil
           payload: z.string().describe("JSON string with the data needed to execute."),
         },
         async (args) => {
+          if (isGoogleDocDraft(args.kind) && savingGoogleDoc) {
+            const existing = await savingGoogleDoc;
+            if (!existing) throw new Error("Google Doc draft was not saved. Retry preparation.");
+            return { content: [{ type: "text" as const,
+              text: `This task already saved Google Doc draft ${existing}. Do not create another draft for the same document.` }] };
+          }
+          if (isGoogleDocDraft(args.kind) && savedGoogleDocDraftId) {
+            return { content: [{ type: "text" as const,
+              text: `This task already saved Google Doc draft ${savedGoogleDocDraftId}. Do not create another draft for the same document.` }] };
+          }
+          const payload = isGoogleDocDraft(args.kind)
+            ? JSON.stringify(parseGoogleDocPayload(args.payload)) : args.payload;
           const draftId = randomId("draft");
-          await convex.mutation(api.drafts.create, {
+          const saving = convex.mutation(api.drafts.create, {
             draftId,
             conversationId,
             kind: args.kind,
             summary: args.summary,
-            payload: args.payload,
+            payload,
           });
+          if (isGoogleDocDraft(args.kind)) savingGoogleDoc = saving.then(() => draftId, () => undefined);
+          try { await saving; } catch (error) {
+            if (isGoogleDocDraft(args.kind)) savingGoogleDoc = undefined;
+            throw error;
+          }
+          if (isGoogleDocDraft(args.kind)) savedGoogleDocDraftId = draftId;
           return {
             content: [
               {
@@ -82,11 +103,11 @@ export function createDraftDecisionMcp(conversationId: string, humanMessage = ""
 
       tool(
         "send_draft",
-        "Approve and execute a draft. Spawns an execution agent to actually perform the action based on the stored payload.",
+        "Approve and execute a draft. Google Docs drafts use one direct connected-account call; other drafts use the existing execution path.",
         { draftId: z.string(), integrations: z.array(z.string()) },
         async (args) => {
           const draft = await convex.query(api.drafts.get, { draftId: args.draftId });
-          if (!draft || draft.status !== "pending") {
+          if (!draft || draft.conversationId !== conversationId || draft.status !== "pending") {
             return {
               content: [
                 {
@@ -99,6 +120,15 @@ export function createDraftDecisionMcp(conversationId: string, humanMessage = ""
           if (draft.kind === "browser.googleform") {
             const result=await submitGoogleFormDraft(args.draftId,conversationId,humanMessage);
             return {content:[{type:"text" as const,text:JSON.stringify(result)}]};
+          }
+          if (isGoogleDocDraft(draft.kind)) {
+            try {
+              const result = await createApprovedGoogleDoc(args.draftId, conversationId, draft.payload);
+              return { content: [{ type: "text" as const, text: result.note }] };
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Document creation could not start.";
+              return { content: [{ type: "text" as const, text: message }] };
+            }
           }
           await convex.mutation(api.drafts.setStatus, {
             draftId: args.draftId,
@@ -130,6 +160,10 @@ payload JSON: ${draft.payload}`;
         "Cancel a pending draft when the user says 'no', 'cancel', or revises the request.",
         { draftId: z.string() },
         async (args) => {
+          const draft = await convex.query(api.drafts.get, { draftId: args.draftId });
+          if (!draft || draft.conversationId !== conversationId || draft.status !== "pending") {
+            return { content: [{ type: "text" as const, text: `Draft ${args.draftId} not found or already decided.` }] };
+          }
           await convex.mutation(api.drafts.setStatus, {
             draftId: args.draftId,
             status: "rejected",

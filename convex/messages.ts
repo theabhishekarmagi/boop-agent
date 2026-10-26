@@ -9,11 +9,20 @@ export const send = mutation({
     content: v.string(),
     agentId: v.optional(v.string()),
     turnId: v.optional(v.string()),
+    dedupe: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const ownerId = await requireWorkspaceOwner(ctx);
+    const { dedupe, ...message } = args;
+    if (dedupe && args.turnId) {
+      const existing = await ctx.db.query("messages")
+        .withIndex("by_owner_conversation_turn", q => q.eq("ownerId", ownerId)
+          .eq("conversationId", args.conversationId).eq("turnId", args.turnId))
+        .filter(q => q.eq(q.field("role"), args.role)).first();
+      if (existing) return existing._id;
+    }
     const now = Date.now();
-    const id = await ctx.db.insert("messages", { ownerId, ...args, createdAt: now });
+    const id = await ctx.db.insert("messages", { ownerId, ...message, createdAt: now });
 
     const conv = await ctx.db
       .query("conversations")
@@ -32,6 +41,17 @@ export const send = mutation({
       });
     }
     return id;
+  },
+});
+
+export const byTurn = query({
+  args: { conversationId: v.string(), turnId: v.string() },
+  handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
+    return await ctx.db.query("messages")
+      .withIndex("by_owner_conversation_turn", q => q.eq("ownerId", ownerId)
+        .eq("conversationId", args.conversationId).eq("turnId", args.turnId))
+      .take(10);
   },
 });
 

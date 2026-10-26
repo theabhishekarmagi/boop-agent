@@ -8,6 +8,7 @@ const statusV = v.union(
   v.literal("completed"),
   v.literal("failed"),
   v.literal("cancelled"),
+  v.literal("paused"),
 );
 
 export const create = mutation({
@@ -30,6 +31,28 @@ export const create = mutation({
       costUsd: 0,
       startedAt: Date.now(),
     });
+  },
+});
+
+/** Claim one durable task for a provider message before starting model work. */
+export const createOnce = mutation({
+  args: {
+    agentId: v.string(), conversationId: v.string(), name: v.string(), task: v.string(),
+    workflow: v.optional(v.union(v.literal("general"), v.literal("gmail_priority"))),
+    mcpServers: v.array(v.string()),
+  },
+  returns: v.object({ created: v.boolean(), status: statusV }),
+  handler: async (ctx, args) => {
+    const ownerId = await requireWorkspaceOwner(ctx);
+    const existing = await ctx.db.query("executionAgents")
+      .withIndex("by_owner_agent_id", q => q.eq("ownerId", ownerId).eq("agentId", args.agentId)).unique();
+    if (existing) {
+      if (existing.conversationId !== args.conversationId) throw new Error("Task belongs to another conversation.");
+      return { created: false, status: existing.status };
+    }
+    await ctx.db.insert("executionAgents", { ownerId, ...args, status: "spawned",
+      inputTokens: 0, outputTokens: 0, costUsd: 0, startedAt: Date.now() });
+    return { created: true, status: "spawned" as const };
   },
 });
 

@@ -13,6 +13,7 @@ import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage
 import { modelForExecution } from "./model-config.js";
 import { getRuntimeModel } from "./runtime-config.js";
 import { createGoogleFormTools, formBrowserEnabled } from "./google-forms.js";
+import { createHash } from "node:crypto";
 
 const running = new Map<string, { abort: AbortController; startedAt: number }>();
 const backgroundTasks = new TaskScheduler(3);
@@ -55,12 +56,14 @@ const EXECUTION_SYSTEM = `You are a focused background worker for the user.
 Your job:
 1. Perform the task you were given, end to end.
 2. Use your tools — WebSearch, WebFetch, and any integrations loaded for this spawn — to investigate and act.
-3. Return a concise, well-structured answer — not a data dump.
+3. Return the answer or outcome first, followed by only the details the user needs.
 
 Research discipline:
 - Prefer WebSearch for fresh/factual questions. WebFetch when you need the content of a known URL.
 - Cite real URLs only — NEVER invent sources. If a page failed to load, say so.
 - Cross-check when it matters: one search is rarely enough for a claim.
+- For consequential financial, medical, or legal claims, check primary sources before stating a result as confirmed. If the primary document cannot be read, label the claim unverified; a search snippet or secondary article does not establish its contents.
+- Never include internal tool citation markers such as cite... in the user-facing answer. Use readable URLs in the Sources section.
 
 MANDATORY: for any task that used WebSearch or WebFetch, end your response with
 a "Sources:" section listing the ACTUAL URLs you fetched or found. Example:
@@ -70,18 +73,19 @@ a "Sources:" section listing the ACTUAL URLs you fetched or found. Example:
   - https://www.japan-guide.com/e/e3008.html
 
 No URLs = no sources section. Never write vague names like "Lonely Planet" or
-"official guide" without the specific URL. The interaction agent relays your
-output to the user verbatim, so if you don't include URLs, the user won't see
-any.
+"official guide" without the specific URL. Your result is delivered directly
+to the user, so include the actual URLs when research was used.
 
 Style:
-- Optimize for iMessage delivery: short sentences, bullets over paragraphs, no tables.
-- Prefer markdown with **bold** keywords and • bullets.
-- Under 500 words unless explicitly asked for more.
-- If you can't complete something, say why in one sentence.
+- Write for {{CHANNEL}}. Lead with the result, not a recap of the request or a description of your process.
+- For routine tasks, use one or two short sentences. For several distinct findings, use 2–4 short bullets with one idea each. Avoid dense paragraphs, tables, and decorative headings.
+- Aim for about 120 words or fewer in a routine chat result. Use more when the user asks for detail or when evidence, sources, next steps, or important qualifications require it.
+- State completion accurately: distinguish done, drafted, blocked, and uncertain. If blocked, explain why and give the most useful next step.
+- Do not repeat facts already given by the user or pad the answer with generic context.
 
 Safety:
 - Anything that sends a message, creates an event, or takes an external action: call save_draft with a JSON payload instead of the real send/create tool. Return the summary so the interaction agent can show it to the user.
+- For one requested Google Doc, save one gdocs.create draft containing the complete title and markdown_text, including source URLs. Research and writing belong in that one draft; do not create separate drafts for the research and the document.
 - Only the interaction agent's send_draft tool commits. You never commit.`;
 
 export interface SpawnOptions {
@@ -166,7 +170,10 @@ export async function spawnExecutionAgent(opts: SpawnOptions, prepared?: { agent
     for await (const msg of runAgentQuery({
       prompt: opts.task,
       options: {
-        systemPrompt: EXECUTION_SYSTEM + (opts.workflow === "gmail_priority" ? GMAIL_PRIORITY_INSTRUCTIONS : ""),
+        systemPrompt: EXECUTION_SYSTEM.replace("{{CHANNEL}}", opts.conversationId?.startsWith("whatsapp:") ? "WhatsApp"
+          : opts.conversationId?.startsWith("telegram:") ? "Telegram"
+          : opts.conversationId?.startsWith("sms:") ? "iMessage" : "the web dashboard") +
+          (opts.workflow === "gmail_priority" ? GMAIL_PRIORITY_INSTRUCTIONS : ""),
         model: requestedModel,
         toolGroups: mcpServers,
         research: opts.workflow !== "gmail_priority",
@@ -272,12 +279,20 @@ export function activeConversationTasks(conversationId: string) {
   return backgroundTasks.list(currentOwner(), conversationId);
 }
 
-export async function startBackgroundAgent(opts: SpawnOptions & { conversationId: string; dependsOn?: string[] }) {
+export async function startBackgroundAgent(opts: SpawnOptions & { conversationId: string; dependsOn?: string[]; idempotencyKey?: string }) {
   const owner = currentOwner();
-  const agentId = randomId("agent");
+  const agentId = opts.idempotencyKey
+    ? `agent_${createHash("sha256").update(JSON.stringify([owner, opts.conversationId, opts.idempotencyKey])).digest("hex").slice(0, 32)}`
+    : randomId("agent");
   const name = opts.name ?? (opts.integrations.join("+") || "general");
-  await convex.mutation(api.agents.create, { agentId, conversationId: opts.conversationId,
-    name, task: opts.task, mcpServers: opts.integrations, workflow: opts.workflow });
+  if (opts.idempotencyKey) {
+    const claim = await convex.mutation(api.agents.createOnce, { agentId, conversationId: opts.conversationId,
+      name, task: opts.task, mcpServers: opts.integrations, workflow: opts.workflow });
+    if (!claim.created) return { agentId, status: claim.status === "spawned" ? "queued" : claim.status, duplicate: true };
+  } else {
+    await convex.mutation(api.agents.create, { agentId, conversationId: opts.conversationId,
+      name, task: opts.task, mcpServers: opts.integrations, workflow: opts.workflow });
+  }
   try {
     if (opts.dependsOn?.length) await convex.mutation(api.agents.addLog, { agentId, logType: "text",
       content: `Waiting for prerequisite tasks: ${opts.dependsOn.join(", ")}. Their completed results will be supplied automatically.` });
@@ -296,7 +311,7 @@ export async function startBackgroundAgent(opts: SpawnOptions & { conversationId
       finish: outcome => runInWorkspace(owner, async () => {
         await convex.mutation(api.agents.update, { agentId, status: outcome.status,
           ...(outcome.status === "completed" ? { result: outcome.result } : { error: outcome.result }) });
-        const text = `${name} — ${outcome.status}\n\n${outcome.result}`;
+        const text = outcome.status === "completed" ? outcome.result : `${name} — ${outcome.status}\n${outcome.result}`;
         await convex.mutation(api.messages.send, { conversationId: opts.conversationId, role: "assistant", content: text, agentId });
         broadcast("agent_done", { agentId, status: outcome.status });
         broadcast("assistant_message", { conversationId: opts.conversationId, content: text });

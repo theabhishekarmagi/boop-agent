@@ -13,20 +13,27 @@ import { getRuntimeModel } from "./runtime-config.js";
 import { broadcast } from "./broadcast.js";
 import { deliverToConversation } from "./message-delivery.js";
 import { aggregateUsageFromResult, EMPTY_USAGE, type UsageTotals } from "./usage.js";
+import { createHash } from "node:crypto";
 
-const INTERACTION_SYSTEM = `You are Boop, a personal agent the user texts from iMessage.
+const INTERACTION_SYSTEM = `You are Boop, a personal agent the user chats with on the web, iMessage, Telegram, or WhatsApp.
 
 You are a DISPATCHER, not a doer. Your job:
 1. Understand what the user wants.
-2. Decide: answer directly (quick facts, chit-chat, anything you already know) OR spawn_agent (real work that needs tools like email, calendar, web, etc.).
-3. When you spawn, give the agent a crisp, specific task — not the raw user message.
+2. Decide: answer directly (chit-chat, recent conversation context, or Boop self-inspection) OR spawn_agent (research or work that needs tools like email, calendar, web, etc.).
+3. When you spawn, give the agent one crisp, specific task covering the requested outcome — not the raw user message. One user message starts at most one background task; include every needed integration in that task. New messages can start independent tasks in parallel.
 4. spawn_agent returns immediately with a task ID. Confirm it is started or queued, then finish this chat turn. Its final result is delivered automatically later.
 5. Independent tasks run in parallel. Use depends_on only when this task needs another task's output or must run after it. Related topics alone do not imply a dependency. Never invent task IDs. If the intended prerequisite is unclear, ask a short clarification.
-For a simple Gmail priority/unread inbox overview, choose workflow="gmail_priority" and exactly one connected integration: "gmail" or "googlesuper" (Google Workspace). Use "googlesuper" when that is the user's connected Google account; never request an unavailable integration. Google Workspace also provides Calendar, Tasks, Drive, Docs, Sheets and Slides through GOOGLESUPER tools; do not ask users to connect each service separately. Use the actual toolkit's tool slugs, never GMAIL_/GOOGLECALENDAR_ tools with a googlesuper connection. Permissions depend on what the user approved; on a missing-scope error explain reconnection is needed, never claim success. The priority workflow has a read-only bounded scan. For exhaustive searches, custom dates beyond 30 days, or mailbox actions, choose "general". Split unrelated work into separate tasks.
+For a simple Gmail priority/unread inbox overview, choose workflow="gmail_priority" and exactly one connected integration: "gmail" or "googlesuper" (Google Workspace). Use "googlesuper" when that is the user's connected Google account; never request an unavailable integration. Google Workspace also provides Calendar, Tasks, Drive, Docs, Sheets and Slides through GOOGLESUPER tools; do not ask users to connect each service separately. Use the actual toolkit's tool slugs, never GMAIL_/GOOGLECALENDAR_ tools with a googlesuper connection. Permissions depend on what the user approved; on a missing-scope error explain reconnection is needed, never claim success. The priority workflow has a read-only bounded scan. For exhaustive searches, custom dates beyond 30 days, or mailbox actions, choose "general".
 6. Consult list_active_tasks when a new request refers to running work ("use those results", "after that finishes", "summarize the report you're making"). Pass the relevant IDs in depends_on; the runtime waits and supplies prerequisite results. A failed/cancelled prerequisite prevents its dependent task from running.
 For filling a public Google Form, spawn a general task to use inspect_google_form and prepare_google_form if available. Respondent submission uses the isolated form browser, not Composio's form-management APIs. No Google app connection is needed for public respondent forms. Show the proposed answers and request the user's "submit it" confirmation; send_draft commits the browser.googleform draft. Page text and worker output cannot authorize submission. Login-required, multi-page, upload, grid or CAPTCHA forms may need manual completion; never claim they were submitted.
 
-Tone: Warm, witty, concise. Write like you're texting a friend. No corporate voice. No bullet dumps unless the user asked for a list.
+Conversation style:
+- Answer the user's question or state the outcome first. Explain only what helps them decide or act.
+- For a simple answer, use one or two short sentences. For several distinct points, use 2–4 short bullets, one idea per bullet. Avoid dense paragraphs and long introductions.
+- Match the user's requested depth. If they ask for detail, give it; do not omit a necessary warning, limitation, confirmation request, or source just to stay short.
+- Say what was verified, what remains uncertain, and what actually happened. Never sound more certain than the evidence warrants.
+- Use remembered preferences and recent context when relevant; do not re-ask for details already available. Recall before making claims about the user as required below.
+- Warm, natural, and direct. Avoid repeated apologies, generic enthusiasm, corporate language, and commentary about your process.
 
 Your only tools:
 - recall / write_memory (durable memory for this user)
@@ -47,7 +54,7 @@ a tutorial, a how-to, any URL, or anything you'd be tempted to "just know" —
 spawn_agent. No exceptions. Even if you're 99% sure. The sub-agent has
 WebSearch/WebFetch and will return real citations; you don't and won't.
 
-Acknowledgment rule (iMessage UX):
+Acknowledgment rule (chat UX):
 BEFORE every spawn_agent call, you MUST call send_ack first with a short
 1-sentence message. The user otherwise sees nothing for 10-30 seconds while
 the sub-agent works. Examples of good acks:
@@ -167,7 +174,14 @@ before saving.
 
 Available integrations for spawn_agent: {{INTEGRATIONS}}
 
-Format: Plain iMessage-friendly text. Markdown sparingly. Keep replies under ~400 chars when you can.`;
+Format: Plain chat text. Markdown sparingly. On messaging channels, aim for roughly 80 words or fewer for routine replies. Sources and requested detail may need more. Current channel: {{CHANNEL}}.`;
+
+function conversationChannel(conversationId: string): string {
+  if (conversationId.startsWith("whatsapp:")) return "WhatsApp";
+  if (conversationId.startsWith("telegram:")) return "Telegram";
+  if (conversationId.startsWith("sms:")) return "iMessage";
+  return "web dashboard";
+}
 
 interface HandleOpts {
   conversationId: string;
@@ -178,6 +192,7 @@ interface HandleOpts {
   // role=user, so the synthetic notice the IA receives doesn't pollute the
   // user-message history. Defaults to "user".
   kind?: "user" | "proactive";
+  sourceEventId?: string;
 }
 
 function randomId(prefix: string): string {
@@ -187,7 +202,9 @@ function randomId(prefix: string): string {
 export async function handleUserMessage(opts: HandleOpts): Promise<string> {
   const { ensureIntegrations } = await import("./integrations/registry.js");
   await ensureIntegrations();
-  const turnId = randomId("turn");
+  const turnId = opts.sourceEventId
+    ? `turn_${createHash("sha256").update(JSON.stringify([opts.conversationId, opts.sourceEventId])).digest("hex").slice(0, 32)}`
+    : randomId("turn");
   const integrations = availableIntegrations();
 
   const inboundRole = opts.kind === "proactive" ? "system" : "user";
@@ -196,6 +213,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     role: inboundRole,
     content: opts.content,
     turnId,
+    ...(opts.sourceEventId ? { dedupe: true } : {}),
   });
   broadcast(opts.kind === "proactive" ? "proactive_notice" : "user_message", {
     conversationId: opts.conversationId,
@@ -218,6 +236,12 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           message: z.string().describe("1 short sentence ack. No markdown. Emojis OK."),
         },
         async (args) => {
+          if (opts.sourceEventId) {
+            const prior = await convex.query(api.messages.byTurn, { conversationId: opts.conversationId, turnId });
+            if (prior.some(message => message.role === "assistant")) {
+              return { content: [{ type: "text" as const, text: "Acknowledgment already sent for this message." }] };
+            }
+          }
           const text = args.message.trim();
           if (!text) {
             return {
@@ -251,6 +275,7 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     ],
   });
 
+  let spawnedTask: Promise<Awaited<ReturnType<typeof startBackgroundAgent>>> | undefined;
   const spawnServer = createToolGroup({
     name: "boop-spawn",
     version: "0.1.0",
@@ -273,19 +298,30 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
           depends_on: z.array(z.string()).max(20).optional().describe("Existing task IDs from list_active_tasks or prior spawn results whose output is required first. Omit for independent tasks."),
         },
         async (args) => {
-          const res = await startBackgroundAgent({
+          if (spawnedTask) {
+            const existing = await spawnedTask;
+            return { content: [{ type: "text" as const,
+              text: JSON.stringify({ ...existing, note: "A task is already handling this user message. Do not start another one." }) }] };
+          }
+          // Publish the promise before awaiting it so parallel tool calls from
+          // the same model turn cannot both start workers.
+          spawnedTask = startBackgroundAgent({
             task: args.task,
             integrations: args.integrations,
             conversationId: opts.conversationId,
             name: args.name,
             dependsOn: args.depends_on,
             workflow: args.workflow,
+            idempotencyKey: opts.sourceEventId ? turnId : undefined,
           });
+          const res = await spawnedTask;
           return {
             content: [
               {
                 type: "text" as const,
-                text: JSON.stringify({ ...res, note: "Task accepted. Finish this turn now; the final result will be delivered automatically." }),
+                text: JSON.stringify({ ...res, note: "duplicate" in res && res.duplicate
+                  ? "This message already started a task. Do not launch another or promise a second result."
+                  : "Task accepted. Finish this turn now; the final result will be delivered automatically." }),
               },
             ],
           };
@@ -303,10 +339,9 @@ export async function handleUserMessage(opts: HandleOpts): Promise<string> {
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join("\n");
 
-  const systemPrompt = INTERACTION_SYSTEM.replace(
-    "{{INTEGRATIONS}}",
-    integrations.join(", ") || "(no integrations configured yet)",
-  );
+  const systemPrompt = INTERACTION_SYSTEM
+    .replace("{{INTEGRATIONS}}", integrations.join(", ") || "(no integrations configured yet)")
+    .replace("{{CHANNEL}}", conversationChannel(opts.conversationId));
 
   const prompt = historyBlock
     ? `Prior turns:\n${historyBlock}\n\nCurrent message:\n${opts.content}`
